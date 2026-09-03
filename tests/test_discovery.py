@@ -11,7 +11,7 @@ from rrdmcp.discovery import (
     resolve_field,
 )
 from rrdmcp.errors import FieldNotFoundError, HostNotFoundError, PluginNotFoundError
-from rrdmcp.munin_datafile import load_datafile
+from rrdmcp.munin_datafile import load_datafile, parse_datafile
 
 
 def test_build_index_from_datafile(munin_root: Path):
@@ -104,6 +104,51 @@ def test_build_index_falls_back_when_no_datafile(munin_root: Path):
     assert all(e.plugin == "" for e in entries)
 
 
-def test_build_index_with_empty_datafile_does_not_fall_back(munin_root: Path):
+def test_build_index_with_empty_datafile_falls_back_for_all_rrd_files(
+    munin_root: Path,
+):
+    # A present-but-empty datafile covers nothing, so every RRD file on disk
+    # is "uncovered" and merged in via the fallback scan — same outcome as
+    # datafile_index=None, since there is no rich data to prefer over it.
     entries = build_index(munin_root, {})
-    assert entries == []
+    assert len(entries) == 3
+    assert all(e.metadata_available is False for e in entries)
+    assert all(e.plugin == "" for e in entries)
+
+
+def test_build_index_merges_datafile_entries_with_uncovered_rrd_files(
+    munin_root: Path,
+):
+    # Datafile covering only "user" and "system" — "idle"'s RRD file exists
+    # on disk but has no datafile entry, e.g. a host that dropped out of the
+    # current munin.conf while its historical RRD files remain.
+    partial_datafile_text = """version 2.999.4
+testgroup;testhost.example.com:cpu.graph_title CPU usage
+testgroup;testhost.example.com:cpu.graph_vlabel %
+testgroup;testhost.example.com:cpu.graph_category system
+testgroup;testhost.example.com:cpu.user.label User
+testgroup;testhost.example.com:cpu.user.type GAUGE
+testgroup;testhost.example.com:cpu.user.warning 80
+testgroup;testhost.example.com:cpu.user.critical 95
+testgroup;testhost.example.com:cpu.system.label System
+testgroup;testhost.example.com:cpu.system.type GAUGE
+"""
+    datafile_index = parse_datafile(partial_datafile_text)
+    entries = build_index(munin_root, datafile_index)
+
+    assert len(entries) == 3
+
+    rich = [e for e in entries if e.metadata_available]
+    assert {e.field for e in rich} == {"user", "system"}
+    assert all(e.plugin == "cpu" for e in rich)
+    assert all(e.host == "testhost.example.com" for e in rich)
+
+    degraded = [e for e in entries if not e.metadata_available]
+    assert len(degraded) == 1
+    assert degraded[0].field == "idle"
+    assert degraded[0].plugin == ""
+    assert degraded[0].path.name == "testhost.example.com-cpu-idle-g.rrd"
+
+    # No duplicate paths between the datafile-based and fallback-based entries.
+    paths = [e.path for e in entries]
+    assert len(paths) == len(set(paths))

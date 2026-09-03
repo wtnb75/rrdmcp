@@ -99,9 +99,12 @@ def _build_from_fallback(base_path: Path) -> list[NormalizedField]:
 def build_index(
     base_path: Path, datafile_index: DatafileIndex | None
 ) -> list[NormalizedField]:
-    if datafile_index is not None:
-        return _build_from_datafile(base_path, datafile_index)
-    return _build_from_fallback(base_path)
+    datafile_entries = _build_from_datafile(base_path, datafile_index or {})
+    covered_paths = {e.path for e in datafile_entries}
+    fallback_entries = [
+        e for e in _build_from_fallback(base_path) if e.path not in covered_paths
+    ]
+    return datafile_entries + fallback_entries
 
 
 def list_hosts(entries: list[NormalizedField]) -> list[dict]:
