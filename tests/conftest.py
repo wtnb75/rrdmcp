@@ -23,16 +23,23 @@ def munin_root(tmp_path: Path) -> Path:
 
     start = int(time.time()) - 1000
     for field, ds_type in TEST_FIELDS.items():
-        rrd_file = group_dir / f"{TEST_HOST}-{TEST_PLUGIN}-{field}-{ds_type[0].lower()}.rrd"
+        rrd_file = (
+            group_dir / f"{TEST_HOST}-{TEST_PLUGIN}-{field}-{ds_type[0].lower()}.rrd"
+        )
         subprocess.run(
             [
-                "rrdtool", "create", str(rrd_file),
-                "--start", str(start),
-                "--step", "10",
+                "rrdtool",
+                "create",
+                str(rrd_file),
+                "--start",
+                str(start),
+                "--step",
+                "10",
                 f"DS:42:{ds_type}:20:0:100",
                 "RRA:AVERAGE:0.5:1:200",
             ],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
         update_args = ["rrdtool", "update", str(rrd_file)]
         for i in range(1, 51):

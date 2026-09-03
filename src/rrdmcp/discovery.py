@@ -6,7 +6,9 @@ from .errors import FieldNotFoundError, HostNotFoundError, PluginNotFoundError
 from .munin_datafile import DatafileIndex, FieldMeta, PluginMeta
 from .rrd import rrd_path
 
-_FALLBACK_RE = re.compile(r"^(?P<host_plugin>.+)-(?P<field>[^-]+)-(?P<type>[a-z])\.rrd$")
+_FALLBACK_RE = re.compile(
+    r"^(?P<host_plugin>.+)-(?P<field>[^-]+)-(?P<type>[a-z])\.rrd$"
+)
 
 
 @dataclass
@@ -48,13 +50,17 @@ def fallback_scan(base_path: Path) -> list[dict]:
     return entries
 
 
-def _build_from_datafile(base_path: Path, datafile_index: DatafileIndex) -> list[NormalizedField]:
+def _build_from_datafile(
+    base_path: Path, datafile_index: DatafileIndex
+) -> list[NormalizedField]:
     entries: list[NormalizedField] = []
     for (group, host), plugins in datafile_index.items():
         for plugin_name, plugin_meta in plugins.items():
             for field_name, field_meta in plugin_meta.fields.items():
                 ds_type = field_meta.type or "GAUGE"
-                path = rrd_path(base_path, group, host, plugin_name, field_name, ds_type)
+                path = rrd_path(
+                    base_path, group, host, plugin_name, field_name, ds_type
+                )
                 entries.append(
                     NormalizedField(
                         group=group,
@@ -90,8 +96,10 @@ def _build_from_fallback(base_path: Path) -> list[NormalizedField]:
     return entries
 
 
-def build_index(base_path: Path, datafile_index: DatafileIndex | None) -> list[NormalizedField]:
-    if datafile_index:
+def build_index(
+    base_path: Path, datafile_index: DatafileIndex | None
+) -> list[NormalizedField]:
+    if datafile_index is not None:
         return _build_from_datafile(base_path, datafile_index)
     return _build_from_fallback(base_path)
 
@@ -123,17 +131,25 @@ def list_plugins(entries: list[NormalizedField], group: str, host: str) -> list[
     ]
 
 
-def _require_plugin(entries: list[NormalizedField], group: str, host: str, plugin: str) -> None:
+def _require_plugin(
+    entries: list[NormalizedField], group: str, host: str, plugin: str
+) -> None:
     _require_host(entries, group, host)
-    if not any(e.group == group and e.host == host and e.plugin == plugin for e in entries):
+    if not any(
+        e.group == group and e.host == host and e.plugin == plugin for e in entries
+    ):
         raise PluginNotFoundError(
             f"plugin not found: group={group!r} host={host!r} plugin={plugin!r}"
         )
 
 
-def list_fields(entries: list[NormalizedField], group: str, host: str, plugin: str) -> list[dict]:
+def list_fields(
+    entries: list[NormalizedField], group: str, host: str, plugin: str
+) -> list[dict]:
     _require_plugin(entries, group, host, plugin)
-    matched = [e for e in entries if e.group == group and e.host == host and e.plugin == plugin]
+    matched = [
+        e for e in entries if e.group == group and e.host == host and e.plugin == plugin
+    ]
     return [
         {
             "field": e.field,
@@ -156,7 +172,12 @@ def resolve_field(
 ) -> NormalizedField:
     _require_plugin(entries, group, host, plugin)
     for e in entries:
-        if e.group == group and e.host == host and e.plugin == plugin and e.field == field:
+        if (
+            e.group == group
+            and e.host == host
+            and e.plugin == plugin
+            and e.field == field
+        ):
             return e
     raise FieldNotFoundError(
         f"field not found: group={group!r} host={host!r} plugin={plugin!r} field={field!r}"

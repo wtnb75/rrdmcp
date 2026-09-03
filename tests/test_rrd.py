@@ -45,6 +45,10 @@ def test_info_returns_ds_and_rra_details(munin_root: Path):
 def test_render_graph_returns_png_bytes(munin_root: Path):
     rrd_file = munin_root / "testgroup" / "testhost.example.com-cpu-user-g.rrd"
     png = render_graph(
-        [(rrd_file, "User")], "-2h", "now", "CPU usage", "%",
+        [(rrd_file, "User")],
+        "-2h",
+        "now",
+        "CPU usage",
+        "%",
     )
     assert png[:8] == b"\x89PNG\r\n\x1a\n"

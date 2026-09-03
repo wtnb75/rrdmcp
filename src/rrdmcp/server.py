@@ -81,7 +81,9 @@ def get_metadata(group: str, host: str, plugin: str, field: str | None = None) -
 
 
 @mcp.tool()
-def fetch_series(group: str, host: str, plugin: str, field: str, start: str, end: str) -> dict:
+def fetch_series(
+    group: str, host: str, plugin: str, field: str, start: str, end: str
+) -> dict:
     """Fetch raw time series data for a single field.
 
     `start`/`end` accept a unix timestamp or any string rrdtool understands
@@ -91,7 +93,9 @@ def fetch_series(group: str, host: str, plugin: str, field: str, start: str, end
         entries = _load_entries()
         resolved = discovery.resolve_field(entries, group, host, plugin, field)
         if not resolved.rrd_available:
-            return {"error": f"RRD file not available for {group}/{host}/{plugin}/{field}"}
+            return {
+                "error": f"RRD file not available for {group}/{host}/{plugin}/{field}"
+            }
         result = rrd.fetch(resolved.path, start, end)
         return {
             "step": result.step,
@@ -116,18 +120,23 @@ def render_graph(
     """Render a PNG graph overlaying the given fields of a plugin."""
     try:
         entries = _load_entries()
+        discovery._require_plugin(entries, group, host, plugin)
         paths_and_labels = []
         for field in fields:
             resolved = discovery.resolve_field(entries, group, host, plugin, field)
             if not resolved.rrd_available:
-                return {"error": f"RRD file not available for {group}/{host}/{plugin}/{field}"}
+                return {
+                    "error": f"RRD file not available for {group}/{host}/{plugin}/{field}"
+                }
             label = resolved.meta.label or field
             paths_and_labels.append((resolved.path, label))
         plugins = discovery.list_plugins(entries, group, host)
         plugin_info = next(p for p in plugins if p["plugin"] == plugin)
         title = plugin_info["graph_title"] or f"{host} {plugin}"
         vlabel = plugin_info["graph_vlabel"] or ""
-        png_bytes = rrd.render_graph(paths_and_labels, start, end, title, vlabel, width, height)
+        png_bytes = rrd.render_graph(
+            paths_and_labels, start, end, title, vlabel, width, height
+        )
         return Image(data=png_bytes, format="png")
     except RrdMcpError as exc:
         return {"error": str(exc)}

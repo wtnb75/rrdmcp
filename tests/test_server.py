@@ -76,3 +76,13 @@ def test_render_graph_tool_returns_image():
     )
     assert isinstance(result, Image)
     assert result.data[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_render_graph_tool_returns_error_dict_for_unknown_plugin_with_empty_fields():
+    from rrdmcp import server
+
+    result = server.render_graph(
+        "testgroup", "testhost.example.com", "no-such-plugin", [], "-2h", "now"
+    )
+    assert isinstance(result, dict)
+    assert "error" in result

@@ -20,7 +20,9 @@ def type_letter(ds_type: str) -> str:
     return ds_type[:1].lower()
 
 
-def rrd_path(base_path: Path, group: str, host: str, plugin: str, field: str, ds_type: str) -> Path:
+def rrd_path(
+    base_path: Path, group: str, host: str, plugin: str, field: str, ds_type: str
+) -> Path:
     filename = f"{host}-{sanitize_name(plugin)}-{sanitize_name(field)}-{type_letter(ds_type)}.rrd"
     return base_path / group / filename
 
@@ -71,7 +73,9 @@ def _infer_step(points: list[tuple[int, float | None]]) -> int:
 def fetch(path: Path, start: str, end: str, cf: str = "AVERAGE") -> FetchResult:
     if not path.exists():
         raise RrdFileNotAvailableError(f"RRD file not found: {path}")
-    proc = _run_rrdtool(["fetch", str(path), cf, "--start", str(start), "--end", str(end)])
+    proc = _run_rrdtool(
+        ["fetch", str(path), cf, "--start", str(start), "--end", str(end)]
+    )
     lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
     ds_names = lines[0].split()
     points: list[tuple[int, float | None]] = []
@@ -111,14 +115,22 @@ def render_graph(
         if not path.exists():
             raise RrdFileNotAvailableError(f"RRD file not found: {path}")
     args = [
-        "graph", "-",
-        "--start", str(start),
-        "--end", str(end),
-        "--title", title,
-        "--vertical-label", vlabel,
-        "--width", str(width),
-        "--height", str(height),
-        "--imgformat", "PNG",
+        "graph",
+        "-",
+        "--start",
+        str(start),
+        "--end",
+        str(end),
+        "--title",
+        title,
+        "--vertical-label",
+        vlabel,
+        "--width",
+        str(width),
+        "--height",
+        str(height),
+        "--imgformat",
+        "PNG",
     ]
     for idx, (path, label) in enumerate(paths_and_labels):
         ds_name = f"v{idx}"

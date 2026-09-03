@@ -73,7 +73,9 @@ def test_list_fields_raises_for_unknown_plugin(munin_root: Path):
 def test_resolve_field(munin_root: Path):
     datafile_index = load_datafile(munin_root / "datafile")
     entries = build_index(munin_root, datafile_index)
-    resolved = resolve_field(entries, "testgroup", "testhost.example.com", "cpu", "user")
+    resolved = resolve_field(
+        entries, "testgroup", "testhost.example.com", "cpu", "user"
+    )
     assert resolved.path.name == "testhost.example.com-cpu-user-g.rrd"
     assert resolved.rrd_available is True
 
@@ -82,7 +84,9 @@ def test_resolve_field_raises_for_unknown_field(munin_root: Path):
     datafile_index = load_datafile(munin_root / "datafile")
     entries = build_index(munin_root, datafile_index)
     with pytest.raises(FieldNotFoundError):
-        resolve_field(entries, "testgroup", "testhost.example.com", "cpu", "no-such-field")
+        resolve_field(
+            entries, "testgroup", "testhost.example.com", "cpu", "no-such-field"
+        )
 
 
 def test_fallback_scan_without_datafile(munin_root: Path):
@@ -98,3 +102,8 @@ def test_build_index_falls_back_when_no_datafile(munin_root: Path):
     assert len(entries) == 3
     assert all(e.metadata_available is False for e in entries)
     assert all(e.plugin == "" for e in entries)
+
+
+def test_build_index_with_empty_datafile_does_not_fall_back(munin_root: Path):
+    entries = build_index(munin_root, {})
+    assert entries == []
