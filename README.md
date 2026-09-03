@@ -39,6 +39,37 @@ uv run rrdmcp
 }
 ```
 
+## Dockerでの実行
+
+```bash
+docker build -t rrdmcp .
+```
+
+stdio transportなので、Muninの実データが置かれているディレクトリをread-onlyでマウントして`-i`(標準入力を開いたまま)で起動します。
+
+```bash
+docker run --rm -i -v /var/lib/munin:/var/lib/munin:ro rrdmcp
+```
+
+MCPクライアント設定例(Docker版):
+
+```json
+{
+  "mcpServers": {
+    "rrdmcp": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "/var/lib/munin:/var/lib/munin:ro",
+        "rrdmcp"
+      ]
+    }
+  }
+}
+```
+
+`MUNIN_RRD_BASE_PATH`が別パスをマウントする場合は`docker run`に`-e MUNIN_RRD_BASE_PATH=...`を追加してください(既定値はイメージ内で`/var/lib/munin`)。
+
 ## ツール
 
 - `list_hosts` — 発見された全`(group, host)`を列挙
