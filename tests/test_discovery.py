@@ -41,6 +41,8 @@ def test_list_plugins(munin_root: Path):
             "graph_title": "CPU usage",
             "graph_category": "system",
             "graph_vlabel": "%",
+            "graph_info": None,
+            "extra_graph_attrs": {},
         }
     ]
 
@@ -68,6 +70,27 @@ def test_list_fields_raises_for_unknown_plugin(munin_root: Path):
     entries = build_index(munin_root, datafile_index)
     with pytest.raises(PluginNotFoundError):
         list_fields(entries, "testgroup", "testhost.example.com", "no-such-plugin")
+
+
+def test_list_plugins_and_list_fields_expose_unknown_attributes(munin_root: Path):
+    text = """version 2.999.4
+testgroup;testhost.example.com:cpu.graph_title CPU usage
+testgroup;testhost.example.com:cpu.graph_args --base 1000 -r --lower-limit 0 --upper-limit 200
+testgroup;testhost.example.com:cpu.user.label User
+testgroup;testhost.example.com:cpu.user.type GAUGE
+testgroup;testhost.example.com:cpu.user.draw AREA
+"""
+    datafile_index = parse_datafile(text)
+    entries = build_index(munin_root, datafile_index)
+
+    plugins = list_plugins(entries, "testgroup", "testhost.example.com")
+    assert plugins[0]["extra_graph_attrs"] == {
+        "graph_args": "--base 1000 -r --lower-limit 0 --upper-limit 200"
+    }
+
+    fields = list_fields(entries, "testgroup", "testhost.example.com", "cpu")
+    user_field = next(f for f in fields if f["field"] == "user")
+    assert user_field["extra"] == {"draw": "AREA"}
 
 
 def test_resolve_field(munin_root: Path):

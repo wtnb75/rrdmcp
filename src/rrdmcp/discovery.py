@@ -129,6 +129,8 @@ def list_plugins(entries: list[NormalizedField], group: str, host: str) -> list[
             "graph_title": meta.graph_title,
             "graph_category": meta.graph_category,
             "graph_vlabel": meta.graph_vlabel,
+            "graph_info": meta.graph_info,
+            "extra_graph_attrs": meta.extra_graph_attrs,
         }
         for plugin, meta in sorted(seen.items())
     ]
@@ -163,6 +165,7 @@ def list_fields(
             "warning": e.meta.warning,
             "critical": e.meta.critical,
             "info": e.meta.info,
+            "extra": e.meta.extra,
             "rrd_available": e.rrd_available,
             "metadata_available": e.metadata_available,
         }

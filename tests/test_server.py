@@ -36,6 +36,7 @@ def test_get_metadata_tool_for_single_field():
     result = server.get_metadata("testgroup", "testhost.example.com", "cpu", "user")
     assert result["warning"] == "80"
     assert result["rrd_available"] is True
+    assert result["extra"] == {}
 
 
 def test_get_metadata_tool_for_whole_plugin():
@@ -64,6 +65,69 @@ def test_fetch_series_tool_returns_error_dict_for_unknown_field():
         "testgroup", "testhost.example.com", "cpu", "no-such-field", "-2h", "now"
     )
     assert "error" in result
+
+
+def test_fetch_series_tool_with_resolution_returns_aggregated_buckets():
+    from rrdmcp import server
+
+    result = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+    )
+    assert "buckets" in result
+    assert "points" not in result
+    assert result["resolution"] == 100
+    buckets = result["buckets"]
+    assert len(buckets) > 0
+    for bucket in buckets:
+        assert bucket["min"] <= bucket["avg"] <= bucket["max"]
+        assert bucket["count"] >= 1
+
+
+def test_fetch_series_tool_rejects_non_positive_resolution():
+    from rrdmcp import server
+
+    result = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=0,
+    )
+    assert "error" in result
+
+
+def test_aggregate_points_computes_avg_min_max_count():
+    from rrdmcp.server import _aggregate_points
+
+    points = [
+        (1000, 10.0),
+        (1010, 20.0),
+        (1020, 30.0),
+        (1100, 5.0),
+        (1110, None),
+        (1120, 15.0),
+    ]
+    buckets = _aggregate_points(points, resolution=100)
+    assert buckets == [
+        {"start": 1000, "avg": 20.0, "min": 10.0, "max": 30.0, "count": 3},
+        {"start": 1100, "avg": 10.0, "min": 5.0, "max": 15.0, "count": 2},
+    ]
+
+
+def test_aggregate_points_omits_bucket_with_only_none_values():
+    from rrdmcp.server import _aggregate_points
+
+    points = [(1000, None), (1000, None)]
+    buckets = _aggregate_points(points, resolution=100)
+    assert buckets == []
 
 
 def test_render_graph_tool_returns_image():

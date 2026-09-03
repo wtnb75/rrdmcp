@@ -73,6 +73,7 @@ def get_metadata(group: str, host: str, plugin: str, field: str | None = None) -
             "warning": resolved.meta.warning,
             "critical": resolved.meta.critical,
             "info": resolved.meta.info,
+            "extra": resolved.meta.extra,
             "rrd_available": resolved.rrd_available,
             "metadata_available": resolved.metadata_available,
         }
@@ -80,16 +81,54 @@ def get_metadata(group: str, host: str, plugin: str, field: str | None = None) -
         return {"error": str(exc)}
 
 
+def _aggregate_points(
+    points: list[tuple[int, float | None]], resolution: int
+) -> list[dict]:
+    """Group points into UTC-epoch-aligned buckets of `resolution` seconds.
+
+    Buckets with no non-None values in range are omitted entirely.
+    """
+    buckets: dict[int, list[float]] = {}
+    for ts, value in points:
+        if value is None:
+            continue
+        bucket_start = (ts // resolution) * resolution
+        buckets.setdefault(bucket_start, []).append(value)
+    return [
+        {
+            "start": bucket_start,
+            "avg": sum(values) / len(values),
+            "min": min(values),
+            "max": max(values),
+            "count": len(values),
+        }
+        for bucket_start, values in sorted(buckets.items())
+    ]
+
+
 @mcp.tool()
 def fetch_series(
-    group: str, host: str, plugin: str, field: str, start: str, end: str
+    group: str,
+    host: str,
+    plugin: str,
+    field: str,
+    start: str,
+    end: str,
+    resolution: int | None = None,
 ) -> dict:
-    """Fetch raw time series data for a single field.
+    """Fetch time series data for a single field.
 
     `start`/`end` accept a unix timestamp or any string rrdtool understands
     (e.g. "-1d", "now").
+
+    If `resolution` (seconds) is given, points are aggregated into
+    UTC-epoch-aligned buckets of that size (avg/min/max/count) instead of
+    returning every raw sample — use this for long time ranges to avoid
+    returning hundreds of raw points.
     """
     try:
+        if resolution is not None and resolution <= 0:
+            return {"error": "resolution must be a positive number of seconds"}
         entries = _load_entries()
         resolved = discovery.resolve_field(entries, group, host, plugin, field)
         if not resolved.rrd_available:
@@ -97,6 +136,13 @@ def fetch_series(
                 "error": f"RRD file not available for {group}/{host}/{plugin}/{field}"
             }
         result = rrd.fetch(resolved.path, start, end)
+        if resolution is not None:
+            return {
+                "step": result.step,
+                "resolution": resolution,
+                "ds_names": result.ds_names,
+                "buckets": _aggregate_points(result.points, resolution),
+            }
         return {
             "step": result.step,
             "ds_names": result.ds_names,
