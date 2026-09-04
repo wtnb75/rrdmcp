@@ -19,6 +19,9 @@ dev = [
     "pdoc",
 ]
 
+[tool.ruff]
+extend-exclude = ["docs"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
