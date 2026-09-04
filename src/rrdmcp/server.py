@@ -159,6 +159,8 @@ def fetch_series(
             return {"error": "summary and resolution cannot be used together"}
         if top_n is not None and resolution is None:
             return {"error": "top_n requires resolution to be set"}
+        if top_n is not None and top_n <= 0:
+            return {"error": "top_n must be a positive integer"}
         if top_by not in ("avg", "min", "max"):
             return {"error": "top_by must be one of 'avg', 'min', 'max'"}
         if order not in ("asc", "desc"):

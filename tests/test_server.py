@@ -215,6 +215,50 @@ def test_fetch_series_tool_top_n_rejects_invalid_order():
     assert "error" in result
 
 
+def test_fetch_series_tool_rejects_non_positive_top_n():
+    from rrdmcp import server
+
+    result = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+        top_n=-1,
+    )
+    assert "error" in result
+
+
+def test_fetch_series_tool_top_n_larger_than_total_buckets_returns_all():
+    from rrdmcp import server
+
+    full = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+    )
+    total = len(full["buckets"])
+
+    top = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+        top_n=total + 1000,
+    )
+    assert len(top["buckets"]) == total
+    assert top["total_buckets"] == total
+
+
 def test_fetch_series_tool_top_n_returns_sorted_top_buckets():
     from rrdmcp import server
 
