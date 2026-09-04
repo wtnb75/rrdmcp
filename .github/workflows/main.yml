@@ -1,0 +1,42 @@
+name: main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  packages: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: wtnb75/actions/python@v1
+    - uses: wtnb75/actions/ruff@v1
+    - uses: wtnb75/actions/pytest@v1
+    - uses: wtnb75/actions/wheel@v1
+    - id: pdoc
+      uses: wtnb75/actions/pdoc@v1
+      with:
+        output-dir: docs
+        module: rrdmcp
+        other-options: --docformat google
+    - uses: wtnb75/actions/merge-pages@v1
+      with:
+        dirs: "cover docs"
+    - name: Setup Pages
+      uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+    - name: deploy pages
+      uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+      id: deployment
+    - uses: wtnb75/actions/docker@v1
+      with:
+        push: 'true'
+        context: .
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+        image-version: ${{ github.ref_name }}

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from rrdmcp.errors import RrdFileNotAvailableError
-from rrdmcp.rrd import fetch, info, rrd_path, render_graph, sanitize_name, type_letter
+from rrdmcp.rrd import fetch, info, render_graph, rrd_path, sanitize_name, type_letter
 
 
 def test_sanitize_name_replaces_invalid_chars():

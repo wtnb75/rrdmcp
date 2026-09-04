@@ -1,0 +1,36 @@
+name: branch
+
+on:
+  push:
+    branches-ignore: [main, gh-pages]
+  workflow_dispatch:
+
+permissions:
+  packages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: wtnb75/actions/python@v1
+    - uses: wtnb75/actions/ruff@v1
+    - uses: wtnb75/actions/pytest@v1
+    - uses: wtnb75/actions/wheel@v1
+    - id: pdoc
+      uses: wtnb75/actions/pdoc@v1
+      with:
+        output-dir: docs
+        module: rrdmcp
+        other-options: --docformat google
+    - uses: wtnb75/actions/merge-pages@v1
+      with:
+        dirs: "cover docs"
+    - uses: wtnb75/actions/docker@v1
+      with:
+        push: 'true'
+        context: .
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+        image-version: ${{ github.ref_name }}

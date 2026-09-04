@@ -1,5 +1,6 @@
 import re
-from dataclasses import dataclass, field as dc_field
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 from pathlib import Path
 
 GRAPH_LEVEL_PREFIX = "graph_"

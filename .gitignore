@@ -1,2 +1,12 @@
 .superpowers/
 munin-data/
+
+.coverage
+cover
+*.pyc
+__pycache__
+build
+dist
+.mypy_cache
+.pytest_cache
+*.egg-info
