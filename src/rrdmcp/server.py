@@ -106,6 +106,19 @@ def _aggregate_points(
     ]
 
 
+def _summarize_points(points: list[tuple[int, float | None]]) -> dict:
+    """Aggregate all non-None values in `points` into a single avg/min/max/count."""
+    values = [value for _, value in points if value is not None]
+    if not values:
+        return {"avg": None, "min": None, "max": None, "count": 0}
+    return {
+        "avg": sum(values) / len(values),
+        "min": min(values),
+        "max": max(values),
+        "count": len(values),
+    }
+
+
 @mcp.tool()
 def fetch_series(
     group: str,
@@ -115,6 +128,10 @@ def fetch_series(
     start: str,
     end: str,
     resolution: int | None = None,
+    summary: bool = False,
+    top_n: int | None = None,
+    top_by: str = "avg",
+    order: str = "desc",
 ) -> dict:
     """Fetch time series data for a single field.
 
@@ -125,10 +142,27 @@ def fetch_series(
     UTC-epoch-aligned buckets of that size (avg/min/max/count) instead of
     returning every raw sample — use this for long time ranges to avoid
     returning hundreds of raw points.
+
+    If `summary` is true, the whole range is aggregated into a single
+    avg/min/max/count instead of buckets or raw points. Cannot be combined
+    with `resolution`.
+
+    If `top_n` is given (requires `resolution`), only the N buckets with the
+    highest (or, with `order="asc"`, lowest) `top_by` value ("avg", "min", or
+    "max") are returned, sorted by that value; `total_buckets` in the result
+    reports how many buckets existed before filtering.
     """
     try:
         if resolution is not None and resolution <= 0:
             return {"error": "resolution must be a positive number of seconds"}
+        if summary and resolution is not None:
+            return {"error": "summary and resolution cannot be used together"}
+        if top_n is not None and resolution is None:
+            return {"error": "top_n requires resolution to be set"}
+        if top_by not in ("avg", "min", "max"):
+            return {"error": "top_by must be one of 'avg', 'min', 'max'"}
+        if order not in ("asc", "desc"):
+            return {"error": "order must be one of 'asc', 'desc'"}
         entries = _load_entries()
         resolved = discovery.resolve_field(entries, group, host, plugin, field)
         if not resolved.rrd_available:
@@ -136,13 +170,27 @@ def fetch_series(
                 "error": f"RRD file not available for {group}/{host}/{plugin}/{field}"
             }
         result = rrd.fetch(resolved.path, start, end)
-        if resolution is not None:
+        if summary:
             return {
+                "step": result.step,
+                "ds_names": result.ds_names,
+                "summary": _summarize_points(result.points),
+            }
+        if resolution is not None:
+            buckets = _aggregate_points(result.points, resolution)
+            response = {
                 "step": result.step,
                 "resolution": resolution,
                 "ds_names": result.ds_names,
-                "buckets": _aggregate_points(result.points, resolution),
             }
+            if top_n is not None:
+                buckets = sorted(
+                    buckets, key=lambda b: b[top_by], reverse=(order == "desc")
+                )
+                response["total_buckets"] = len(buckets)
+                buckets = buckets[:top_n]
+            response["buckets"] = buckets
+            return response
         return {
             "step": result.step,
             "ds_names": result.ds_names,

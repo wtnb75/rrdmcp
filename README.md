@@ -76,7 +76,11 @@ MCPクライアント設定例(Docker版):
 - `list_plugins(group, host)` — ホストのプラグイン一覧
 - `list_fields(group, host, plugin)` — プラグインのフィールド一覧(ラベル・型・閾値等)
 - `get_metadata(group, host, plugin, field?)` — プラグイン全体、または単一フィールドの詳細メタデータ
-- `fetch_series(group, host, plugin, field, start, end)` — 生の時系列データ取得。`start`/`end`はunixタイムスタンプまたは`rrdtool`が解釈できる文字列(`-1d`, `now`等)
+- `fetch_series(group, host, plugin, field, start, end, resolution?, summary?, top_n?, top_by?, order?)` — 時系列データ取得。`start`/`end`はunixタイムスタンプまたは`rrdtool`が解釈できる文字列(`-1d`, `now`等)
+  - 何も指定しなければ生の`points`をそのまま返す
+  - `resolution`(秒)を指定すると、UTC epoch境界のバケットに集計した`buckets`(avg/min/max/count)を返す
+  - `summary=true`は範囲全体を単一の`summary`(avg/min/max/count)に集計する。`resolution`とは併用不可
+  - `top_n`は`resolution`指定時のみ有効で、`top_by`("avg"/"min"/"max", 既定"avg")で`order`("desc"/"asc", 既定"desc")にソートした上位N件のバケットだけを`buckets`として返し、フィルタ前の総数を`total_buckets`に含める
 - `render_graph(group, host, plugin, fields, start, end, width?, height?)` — 指定フィールドを重ね描きしたPNGグラフ
 
 ## 既知の制約

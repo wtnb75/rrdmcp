@@ -130,6 +130,165 @@ def test_aggregate_points_omits_bucket_with_only_none_values():
     assert buckets == []
 
 
+def test_fetch_series_tool_with_summary_returns_aggregate_stats():
+    from rrdmcp import server
+
+    result = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        summary=True,
+    )
+    assert "summary" in result
+    assert "points" not in result
+    assert "buckets" not in result
+    summary = result["summary"]
+    assert summary["min"] <= summary["avg"] <= summary["max"]
+    assert summary["count"] > 0
+
+
+def test_fetch_series_tool_summary_and_resolution_together_is_error():
+    from rrdmcp import server
+
+    result = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+        summary=True,
+    )
+    assert "error" in result
+
+
+def test_fetch_series_tool_top_n_requires_resolution():
+    from rrdmcp import server
+
+    result = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        top_n=1,
+    )
+    assert "error" in result
+
+
+def test_fetch_series_tool_top_n_rejects_invalid_top_by():
+    from rrdmcp import server
+
+    result = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+        top_n=1,
+        top_by="median",
+    )
+    assert "error" in result
+
+
+def test_fetch_series_tool_top_n_rejects_invalid_order():
+    from rrdmcp import server
+
+    result = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+        top_n=1,
+        order="sideways",
+    )
+    assert "error" in result
+
+
+def test_fetch_series_tool_top_n_returns_sorted_top_buckets():
+    from rrdmcp import server
+
+    full = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+    )
+    total = len(full["buckets"])
+    assert total > 2
+
+    top = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+        top_n=2,
+    )
+    assert len(top["buckets"]) == 2
+    assert top["total_buckets"] == total
+    assert top["buckets"][0]["avg"] >= top["buckets"][1]["avg"]
+    expected_top2 = sorted(full["buckets"], key=lambda b: b["avg"], reverse=True)[:2]
+    assert [b["start"] for b in top["buckets"]] == [b["start"] for b in expected_top2]
+
+
+def test_fetch_series_tool_top_n_ascending_order_returns_lowest_first():
+    from rrdmcp import server
+
+    full = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+    )
+    top = server.fetch_series(
+        "testgroup",
+        "testhost.example.com",
+        "cpu",
+        "user",
+        "-2h",
+        "now",
+        resolution=100,
+        top_n=2,
+        order="asc",
+    )
+    expected = sorted(full["buckets"], key=lambda b: b["avg"])[:2]
+    assert [b["start"] for b in top["buckets"]] == [b["start"] for b in expected]
+
+
+def test_summarize_points_computes_avg_min_max_count():
+    from rrdmcp.server import _summarize_points
+
+    points = [(1000, 10.0), (1010, 20.0), (1020, None), (1030, 30.0)]
+    summary = _summarize_points(points)
+    assert summary == {"avg": 20.0, "min": 10.0, "max": 30.0, "count": 3}
+
+
+def test_summarize_points_with_no_values_returns_none_stats():
+    from rrdmcp.server import _summarize_points
+
+    summary = _summarize_points([(1000, None), (1010, None)])
+    assert summary == {"avg": None, "min": None, "max": None, "count": 0}
+
+
 def test_render_graph_tool_returns_image():
     from mcp.server.mcpserver import Image
 
