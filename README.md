@@ -1,29 +1,53 @@
 # rrdmcp
 
-MuninのRRDメトリックデータをLLMに公開するMCPサーバ(stdio transport)。
+An MCP server (stdio transport) that exposes Munin's RRD metric data to an
+LLM, so you can ask questions about your monitored hosts in plain language
+instead of writing `rrdtool` incantations or one-off scripts.
 
-## セットアップ
+## What it's for
+
+Munin collects rich time-series data (CPU, memory, disk, network, custom
+plugins...) but analyzing it usually means digging through graph images or
+writing throwaway scripts against the RRD files. `rrdmcp` exposes that data
+directly to an LLM through a handful of tools, so you can just ask:
+
+- "Which days this month had the highest CPU usage?"
+- "Free memory has been dropping — is that a trend or a one-off?"
+- "fail2ban's ban count spiked a few days ago — does that line up with
+  higher process counts or TCP resets on this host?"
+- "Is disk usage on this host trending toward full, and how soon?"
+
+The server deliberately stays "dumb" about interpretation: it discovers
+hosts/plugins/fields, fetches raw or lightly-aggregated series (bucketed
+averages, whole-range summaries, top-N rankings), and renders graphs — but
+leaves judgment calls (what counts as "high", whether two metrics are
+actually related, what to do about it) to the LLM doing the analysis. This
+keeps the tool surface small and lets the LLM reason over real numbers
+instead of a pre-baked interpretation.
+
+## Setup
 
 ```bash
 uv sync
 ```
 
-実行環境に`rrdtool`コマンドがPATH上にあること(Muninが動いているホストであれば、通常は依存パッケージとして既に入っています)。
+Requires the `rrdtool` command on `PATH` (already present on any host
+running Munin, since it's a dependency of `munin-node`/`munin`).
 
-## 設定(環境変数)
+## Configuration (environment variables)
 
-| 変数名 | 既定値 | 説明 |
+| Variable | Default | Description |
 |---|---|---|
-| `MUNIN_RRD_BASE_PATH` | `/var/lib/munin` | RRDファイルのルートディレクトリ |
-| `MUNIN_DATAFILE_PATH` | `${MUNIN_RRD_BASE_PATH}/datafile` | Muninのdatafile(設定キャッシュ)の場所 |
+| `MUNIN_RRD_BASE_PATH` | `/var/lib/munin` | Root directory of the RRD files |
+| `MUNIN_DATAFILE_PATH` | `${MUNIN_RRD_BASE_PATH}/datafile` | Location of Munin's `datafile` (config cache) |
 
-## 起動
+## Running
 
 ```bash
 uv run rrdmcp
 ```
 
-## MCPクライアント設定例
+## MCP client configuration example
 
 ```json
 {
@@ -39,19 +63,20 @@ uv run rrdmcp
 }
 ```
 
-## Dockerでの実行
+## Running in Docker
 
 ```bash
 docker build -t rrdmcp .
 ```
 
-stdio transportなので、Muninの実データが置かれているディレクトリをread-onlyでマウントして`-i`(標準入力を開いたまま)で起動します。
+Since this is a stdio transport, mount the directory holding the real
+Munin data read-only and keep stdin open with `-i`:
 
 ```bash
 docker run --rm -i -v /var/lib/munin:/var/lib/munin:ro rrdmcp
 ```
 
-MCPクライアント設定例(Docker版):
+MCP client configuration example (Docker):
 
 ```json
 {
@@ -68,23 +93,25 @@ MCPクライアント設定例(Docker版):
 }
 ```
 
-`MUNIN_RRD_BASE_PATH`が別パスをマウントする場合は`docker run`に`-e MUNIN_RRD_BASE_PATH=...`を追加してください(既定値はイメージ内で`/var/lib/munin`)。
+If you mount `MUNIN_RRD_BASE_PATH` at a different path, add
+`-e MUNIN_RRD_BASE_PATH=...` to `docker run` (the image default is
+`/var/lib/munin`).
 
-## ツール
+## Tools
 
-- `list_hosts` — 発見された全`(group, host)`を列挙
-- `list_plugins(group, host)` — ホストのプラグイン一覧
-- `list_fields(group, host, plugin)` — プラグインのフィールド一覧(ラベル・型・閾値等)
-- `get_metadata(group, host, plugin, field?)` — プラグイン全体、または単一フィールドの詳細メタデータ
-- `fetch_series(group, host, plugin, field, start, end, resolution?, summary?, top_n?, top_by?, order?)` — 時系列データ取得。`start`/`end`はunixタイムスタンプまたは`rrdtool`が解釈できる文字列(`-1d`, `now`等)
-  - 何も指定しなければ生の`points`をそのまま返す
-  - `resolution`(秒)を指定すると、UTC epoch境界のバケットに集計した`buckets`(avg/min/max/count)を返す
-  - `summary=true`は範囲全体を単一の`summary`(avg/min/max/count)に集計する。`resolution`とは併用不可
-  - `top_n`は`resolution`指定時のみ有効で、`top_by`("avg"/"min"/"max", 既定"avg")で`order`("desc"/"asc", 既定"desc")にソートした上位N件のバケットだけを`buckets`として返し、フィルタ前の総数を`total_buckets`に含める
-- `render_graph(group, host, plugin, fields, start, end, width?, height?)` — 指定フィールドを重ね描きしたPNGグラフ
+- `list_hosts` — list every discovered `(group, host)` pair
+- `list_plugins(group, host)` — list plugins for a host
+- `list_fields(group, host, plugin)` — list a plugin's fields (label, type, thresholds, etc.)
+- `get_metadata(group, host, plugin, field?)` — detailed metadata for a whole plugin, or a single field
+- `fetch_series(group, host, plugin, field, start, end, resolution?, summary?, top_n?, top_by?, order?)` — fetch time series data. `start`/`end` accept a unix timestamp or any string `rrdtool` understands (`-1d`, `now`, etc.)
+  - With no options, returns raw `points` as-is
+  - `resolution` (seconds) aggregates into UTC-epoch-aligned `buckets` (avg/min/max/count) instead of raw points
+  - `summary=true` aggregates the whole range into a single `summary` (avg/min/max/count); cannot be combined with `resolution`
+  - `top_n` (requires `resolution`) returns only the top N buckets sorted by `top_by` ("avg"/"min"/"max", default "avg") in `order` ("desc"/"asc", default "desc"); `total_buckets` reports the count before filtering, so you can ask things like "the 10 days with the highest average" or "the 5 days with the lowest minimum" directly
+- `render_graph(group, host, plugin, fields, start, end, width?, height?)` — render a PNG graph overlaying the given fields
 
-## 既知の制約
+## Known limitations
 
-- `datafile`が存在しない場合はファイル名からのベストエフォート推定にフォールバックし、host/plugin境界の精度とメタデータが失われる
-- グラフ描画はMunin本家のような閾値バンド・stack・cdef等は再現しない簡易版
-- stdio transportのみ(v1)
+- If `datafile` is unavailable, discovery falls back to best-effort parsing of RRD filenames, losing precision on host/plugin boundaries and all metadata
+- Graph rendering is a simplified version — it doesn't reproduce Munin's own threshold bands, stacking, CDEFs, etc.
+- stdio transport only (v1)
