@@ -420,9 +420,7 @@ def test_main_streamable_http_host_and_port_from_env_var(
 
     server.main([])
 
-    assert calls == [
-        {"transport": "streamable-http", "host": "0.0.0.0", "port": 9000}
-    ]
+    assert calls == [{"transport": "streamable-http", "host": "0.0.0.0", "port": 9000}]
 
 
 def test_main_streamable_http_host_and_port_from_cli_args(
@@ -444,6 +442,4 @@ def test_main_streamable_http_host_and_port_from_cli_args(
         ]
     )
 
-    assert calls == [
-        {"transport": "streamable-http", "host": "0.0.0.0", "port": 9000}
-    ]
+    assert calls == [{"transport": "streamable-http", "host": "0.0.0.0", "port": 9000}]
