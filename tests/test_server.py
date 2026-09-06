@@ -353,3 +353,93 @@ def test_render_graph_tool_returns_error_dict_for_unknown_plugin_with_empty_fiel
     )
     assert isinstance(result, dict)
     assert "error" in result
+
+
+def test_main_defaults_to_stdio_transport(monkeypatch: pytest.MonkeyPatch):
+    from rrdmcp import server
+
+    calls = []
+    monkeypatch.setattr(server.mcp, "run", lambda **kwargs: calls.append(kwargs))
+
+    server.main([])
+
+    assert calls == [{"transport": "stdio"}]
+
+
+def test_main_uses_streamable_http_transport_from_cli_arg(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from rrdmcp import server
+
+    calls = []
+    monkeypatch.setattr(server.mcp, "run", lambda **kwargs: calls.append(kwargs))
+
+    server.main(["--transport", "streamable-http"])
+
+    assert calls == [
+        {"transport": "streamable-http", "host": "127.0.0.1", "port": 8000}
+    ]
+
+
+def test_main_reads_transport_from_env_var(monkeypatch: pytest.MonkeyPatch):
+    from rrdmcp import server
+
+    calls = []
+    monkeypatch.setattr(server.mcp, "run", lambda **kwargs: calls.append(kwargs))
+    monkeypatch.setenv("RRDMCP_TRANSPORT", "streamable-http")
+
+    server.main([])
+
+    assert calls == [
+        {"transport": "streamable-http", "host": "127.0.0.1", "port": 8000}
+    ]
+
+
+def test_main_cli_transport_overrides_env_var(monkeypatch: pytest.MonkeyPatch):
+    from rrdmcp import server
+
+    calls = []
+    monkeypatch.setattr(server.mcp, "run", lambda **kwargs: calls.append(kwargs))
+    monkeypatch.setenv("RRDMCP_TRANSPORT", "streamable-http")
+
+    server.main(["--transport", "stdio"])
+
+    assert calls == [{"transport": "stdio"}]
+
+
+def test_main_streamable_http_host_and_port_from_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from rrdmcp import server
+
+    calls = []
+    monkeypatch.setattr(server.mcp, "run", lambda **kwargs: calls.append(kwargs))
+    monkeypatch.setenv("RRDMCP_TRANSPORT", "streamable-http")
+    monkeypatch.setenv("RRDMCP_HOST", "0.0.0.0")
+    monkeypatch.setenv("RRDMCP_PORT", "9000")
+
+    server.main([])
+
+    assert calls == [{"transport": "streamable-http", "host": "0.0.0.0", "port": 9000}]
+
+
+def test_main_streamable_http_host_and_port_from_cli_args(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from rrdmcp import server
+
+    calls = []
+    monkeypatch.setattr(server.mcp, "run", lambda **kwargs: calls.append(kwargs))
+
+    server.main(
+        [
+            "--transport",
+            "streamable-http",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "9000",
+        ]
+    )
+
+    assert calls == [{"transport": "streamable-http", "host": "0.0.0.0", "port": 9000}]

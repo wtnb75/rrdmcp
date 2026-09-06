@@ -1,3 +1,4 @@
+import argparse
 import os
 from pathlib import Path
 
@@ -238,8 +239,26 @@ def render_graph(
         return {"error": str(exc)}
 
 
-def main() -> None:
-    mcp.run()
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="rrdmcp")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default=os.environ.get("RRDMCP_TRANSPORT", "stdio"),
+    )
+    parser.add_argument("--host", default=os.environ.get("RRDMCP_HOST", "127.0.0.1"))
+    parser.add_argument(
+        "--port", type=int, default=int(os.environ.get("RRDMCP_PORT", "8000"))
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = _build_arg_parser().parse_args(argv)
+    if args.transport == "streamable-http":
+        mcp.run(transport="streamable-http", host=args.host, port=args.port)
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":
