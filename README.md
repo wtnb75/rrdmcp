@@ -1,8 +1,9 @@
 # rrdmcp
 
-An MCP server (stdio transport) that exposes Munin's RRD metric data to an
-LLM, so you can ask questions about your monitored hosts in plain language
-instead of writing `rrdtool` incantations or one-off scripts.
+An MCP server that exposes Munin's RRD metric data to an LLM, so you can ask
+questions about your monitored hosts in plain language instead of writing
+`rrdtool` incantations or one-off scripts. Supports both `stdio` and
+`streamable-http` transports.
 
 ## What it's for
 
@@ -40,11 +41,21 @@ running Munin, since it's a dependency of `munin-node`/`munin`).
 |---|---|---|
 | `MUNIN_RRD_BASE_PATH` | `/var/lib/munin` | Root directory of the RRD files |
 | `MUNIN_DATAFILE_PATH` | `${MUNIN_RRD_BASE_PATH}/datafile` | Location of Munin's `datafile` (config cache) |
+| `RRDMCP_TRANSPORT` | `stdio` | Transport to serve: `stdio` or `streamable-http` |
+| `RRDMCP_HOST` | `127.0.0.1` | Bind host for `streamable-http` |
+| `RRDMCP_PORT` | `8000` | Bind port for `streamable-http` |
 
 ## Running
 
 ```bash
 uv run rrdmcp
+```
+
+Transport can also be selected with CLI flags, which take precedence over
+the environment variables above:
+
+```bash
+uv run rrdmcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
 ## MCP client configuration example
@@ -114,4 +125,3 @@ If you mount `MUNIN_RRD_BASE_PATH` at a different path, add
 
 - If `datafile` is unavailable, discovery falls back to best-effort parsing of RRD filenames, losing precision on host/plugin boundaries and all metadata
 - Graph rendering is a simplified version — it doesn't reproduce Munin's own threshold bands, stacking, CDEFs, etc.
-- stdio transport only (v1)
