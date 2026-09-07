@@ -2,6 +2,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .errors import RrdFileNotAvailableError, RrdToolNotFoundError, RrdToolTimeoutError
@@ -25,6 +26,22 @@ def rrd_path(
 ) -> Path:
     filename = f"{host}-{sanitize_name(plugin)}-{sanitize_name(field)}-{type_letter(ds_type)}.rrd"
     return base_path / group / filename
+
+
+def _normalize_time(value: str) -> str:
+    """Convert an ISO 8601 timestamp to a Unix epoch string for rrdtool.
+
+    Unix timestamps and rrdtool AT-STYLE expressions (e.g. "-1d", "now") are
+    not valid ISO 8601 and fail to parse, so they pass through unchanged.
+    Naive (timezone-less) timestamps are assumed to be UTC.
+    """
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return str(int(dt.timestamp()))
 
 
 def require_rrdtool() -> str:
@@ -74,7 +91,15 @@ def fetch(path: Path, start: str, end: str, cf: str = "AVERAGE") -> FetchResult:
     if not path.exists():
         raise RrdFileNotAvailableError(f"RRD file not found: {path}")
     proc = _run_rrdtool(
-        ["fetch", str(path), cf, "--start", str(start), "--end", str(end)]
+        [
+            "fetch",
+            str(path),
+            cf,
+            "--start",
+            _normalize_time(start),
+            "--end",
+            _normalize_time(end),
+        ]
     )
     lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
     ds_names = lines[0].split()
@@ -118,9 +143,9 @@ def render_graph(
         "graph",
         "-",
         "--start",
-        str(start),
+        _normalize_time(start),
         "--end",
-        str(end),
+        _normalize_time(end),
         "--title",
         title,
         "--vertical-label",

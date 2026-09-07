@@ -114,7 +114,7 @@ If you mount `MUNIN_RRD_BASE_PATH` at a different path, add
 - `list_plugins(group, host)` — list plugins for a host
 - `list_fields(group, host, plugin)` — list a plugin's fields (label, type, thresholds, etc.)
 - `get_metadata(group, host, plugin, field?)` — detailed metadata for a whole plugin, or a single field
-- `fetch_series(group, host, plugin, field, start, end, resolution?, summary?, top_n?, top_by?, order?)` — fetch time series data. `start`/`end` accept a unix timestamp or any string `rrdtool` understands (`-1d`, `now`, etc.)
+- `fetch_series(group, host, plugin, field, start, end, resolution?, summary?, top_n?, top_by?, order?)` — fetch time series data. `start`/`end` accept a unix timestamp, an ISO 8601 timestamp (e.g. `2026-09-07T12:00:00Z`; naive timestamps are treated as UTC), or any string `rrdtool` understands (`-1d`, `now`, etc.)
   - With no options, returns raw `points` as-is
   - `resolution` (seconds) aggregates into UTC-epoch-aligned `buckets` (avg/min/max/count) instead of raw points
   - `summary=true` aggregates the whole range into a single `summary` (avg/min/max/count); cannot be combined with `resolution`

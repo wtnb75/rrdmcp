@@ -1,3 +1,5 @@
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -51,4 +53,28 @@ def test_render_graph_returns_png_bytes(munin_root: Path):
         "CPU usage",
         "%",
     )
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_fetch_accepts_iso8601_start_and_end(munin_root: Path):
+    rrd_file = munin_root / "testgroup" / "testhost.example.com-cpu-user-g.rrd"
+    start_ts = int(time.time()) - 900
+    end_ts = int(time.time()) - 600
+    start_iso = datetime.fromtimestamp(start_ts, tz=UTC).isoformat()
+    end_iso = datetime.fromtimestamp(end_ts, tz=UTC).isoformat()
+
+    result_unix = fetch(rrd_file, str(start_ts), str(end_ts))
+    result_iso = fetch(rrd_file, start_iso, end_iso)
+
+    assert result_iso.points == result_unix.points
+    assert len(result_iso.points) > 0
+
+
+def test_render_graph_accepts_iso8601_start_and_end(munin_root: Path):
+    rrd_file = munin_root / "testgroup" / "testhost.example.com-cpu-user-g.rrd"
+    start_iso = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+    end_iso = datetime.now(UTC).isoformat()
+
+    png = render_graph([(rrd_file, "User")], start_iso, end_iso, "CPU usage", "%")
+
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
