@@ -136,8 +136,9 @@ def fetch_series(
 ) -> dict:
     """Fetch time series data for a single field.
 
-    `start`/`end` accept a unix timestamp or any string rrdtool understands
-    (e.g. "-1d", "now").
+    `start`/`end` accept a unix timestamp, an ISO 8601 timestamp (e.g.
+    "2026-09-07T12:00:00Z"; naive timestamps are treated as UTC), or any
+    string rrdtool understands (e.g. "-1d", "now").
 
     If `resolution` (seconds) is given, points are aggregated into
     UTC-epoch-aligned buckets of that size (avg/min/max/count) instead of
