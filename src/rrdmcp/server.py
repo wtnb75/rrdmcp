@@ -215,7 +215,12 @@ def render_graph(
     width: int = 800,
     height: int = 300,
 ) -> "Image | dict":
-    """Render a PNG graph overlaying the given fields of a plugin."""
+    """Render a PNG graph overlaying the given fields of a plugin.
+
+    `start`/`end` accept a unix timestamp, an ISO 8601 timestamp (e.g.
+    "2026-09-07T12:00:00Z"; naive timestamps are treated as UTC), or any
+    string rrdtool understands (e.g. "-1d", "now").
+    """
     try:
         entries = _load_entries()
         discovery._require_plugin(entries, group, host, plugin)
