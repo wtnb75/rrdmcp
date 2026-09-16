@@ -64,3 +64,41 @@ def munin_root(tmp_path: Path) -> Path:
 """
     (tmp_path / "datafile").write_text(datafile_content)
     return tmp_path
+
+
+SADF_AVAILABLE = shutil.which("sadf") is not None
+
+
+def _find_sadc() -> str | None:
+    found = shutil.which("sadc")
+    if found:
+        return found
+    candidate = Path("/usr/lib/sysstat/sadc")
+    return str(candidate) if candidate.exists() else None
+
+
+SAR_GROUP = "sargroup"
+SAR_HOST = "sarhost.example.com"
+
+
+@pytest.fixture
+def sar_root(tmp_path: Path) -> Path:
+    if not SADF_AVAILABLE:
+        pytest.skip("sadf command not available")
+    sadc = _find_sadc()
+    if sadc is None:
+        pytest.skip("sadc command not available")
+
+    host_dir = tmp_path / SAR_GROUP / SAR_HOST
+    host_dir.mkdir(parents=True)
+    today = time.strftime("%d")
+    sa_file = host_dir / f"sa{today}"
+    # -S DISK でディスクアクティビティも収集対象に含める。2サンプル
+    # (ベースライン + 1インターバル分)採ることで cpu-load 等の
+    # 平均値レコードが1件以上できる。
+    subprocess.run(
+        [sadc, "-S", "DISK", "1", "2", str(sa_file)],
+        check=True,
+        capture_output=True,
+    )
+    return tmp_path

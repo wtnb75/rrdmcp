@@ -1,4 +1,12 @@
-from rrdmcp.sar_index import SAR_ACTIVITY_META, SAR_FIELD_META, activity_key, walk_statistics
+from pathlib import Path
+
+from rrdmcp.sar_index import (
+    SAR_ACTIVITY_META,
+    SAR_FIELD_META,
+    activity_key,
+    build_index,
+    walk_statistics,
+)
 
 # Debian 12 + sysstat 12.6.1 の `sadf -j -- -A` 実出力を縮小したサンプル
 # (timestamp/restartsは呼び出し側で除外される前提なので含めない)
@@ -90,3 +98,34 @@ def test_sar_activity_meta_has_entries_for_common_activities():
     assert SAR_ACTIVITY_META["cpu-load"]["graph_title"]
     assert SAR_ACTIVITY_META["memory"]["graph_vlabel"]
     assert SAR_FIELD_META["cpu-load"]["usr"]
+
+
+SAR_GROUP = "sargroup"
+SAR_HOST = "sarhost.example.com"
+
+
+def test_build_index_returns_empty_list_when_sadf_unavailable(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    assert build_index(tmp_path) == []
+
+
+def test_build_index_returns_empty_list_for_missing_base_path(tmp_path: Path):
+    assert build_index(tmp_path / "does-not-exist") == []
+
+
+def test_build_index_discovers_entries_from_real_sar_log(sar_root: Path):
+    entries = build_index(sar_root)
+    assert len(entries) > 0
+    assert all(e.source == "sar" for e in entries)
+    assert all(e.group == SAR_GROUP for e in entries)
+    assert all(e.host == SAR_HOST for e in entries)
+    assert all(e.rrd_available for e in entries)
+
+    cpu_entries = [e for e in entries if e.plugin.startswith("cpu-load.")]
+    assert len(cpu_entries) > 0
+    assert any(e.metadata_available for e in cpu_entries)
+    usr_field = next(e for e in cpu_entries if e.field == "usr")
+    assert usr_field.meta.label == "User"
+    assert usr_field.plugin_meta.graph_title == "CPU usage"
