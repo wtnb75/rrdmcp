@@ -175,3 +175,14 @@ testgroup;testhost.example.com:cpu.system.type GAUGE
     # No duplicate paths between the datafile-based and fallback-based entries.
     paths = [e.path for e in entries]
     assert len(paths) == len(set(paths))
+
+
+def test_build_index_sets_source_to_munin(munin_root: Path):
+    datafile_index = load_datafile(munin_root / "datafile")
+    entries = build_index(munin_root, datafile_index)
+    assert all(e.source == "munin" for e in entries)
+
+
+def test_build_index_falls_back_sets_source_to_munin(munin_root: Path):
+    entries = build_index(munin_root, None)
+    assert all(e.source == "munin" for e in entries)
