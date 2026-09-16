@@ -73,7 +73,7 @@ filesystems: [{"filesystem": "/dev/vdb1", "MBfsfree": .., ...}, ...]
 したがって「トップレベルキー=activity」という単純な決め打ちではなく、**再帰的にたどる**必要がある。`_walk(node: dict, path: str)`を次のルールで定義する:
 
 - `node`の各`key, value`について:
-  - `value`が配列で、各要素が辞書かつ既知の**インスタンスキー**(`cpu`, `disk-device`, `iface`, `filesystem`, `number`のホワイトリスト)のいずれかを持つ場合 → 要素ごとに`plugin = "{path}.{key}.{instance値}"`、インスタンスキー以外の残りのキーが`field`になる(例: `cpu-load.cpu0`, `disk.vda`, `network.net-dev.eth0`, `power-management.cpu-frequency.all`, `filesystems./dev/vdb1`)。インスタンス値はplugin名の一部になるため`rrd.sanitize_name`と同じ規則でサニタイズする
+  - `value`が配列で、各要素が辞書かつ既知の**インスタンスキー**(`cpu`, `disk-device`, `iface`, `filesystem`, `number`のホワイトリスト)のいずれかを持つ場合 → 要素ごとに`plugin = "{path}.{key}.{instance値}"`、インスタンスキー以外の残りのキーが`field`になる(例: `cpu-load.0`/`cpu-load.all`、`disk.vda`、`network.net-dev.eth0`、`power-management.cpu-frequency.all`、`filesystems._dev_vdb1`)。インスタンス値はplugin名の一部になるため`rrd.sanitize_name`と同じ規則でサニタイズする(`filesystem`の値は`/dev/vdb1`のようにスラッシュを含むため`_dev_vdb1`になる)
   - `value`が配列だが上記に当てはまらない場合 → 未対応構造としてスキップする(v1では扱わない)
   - `value`が辞書の場合 → その中のスカラー値(int/float)だけを集めて`plugin = "{path}.{key}"`のfieldとし、辞書/配列の値を持つキーがあれば`path = "{path}.{key}"`として同じ関数を再帰する(例: `io`は`tps`等のスカラーで`plugin=io`を作りつつ、`io-reads`/`io-writes`/`io-discard`はさらに`plugin=io.io-reads`等を作る)
   - `value`がスカラーの場合は無視する(通常起こらないが、トップレベル直下に将来スカラーキーが増えても安全に無視する)
