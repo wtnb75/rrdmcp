@@ -115,6 +115,49 @@ def test_build_index_returns_empty_list_for_missing_base_path(tmp_path: Path):
     assert build_index(tmp_path / "does-not-exist") == []
 
 
+def _make_sa_host_dir(tmp_path: Path) -> Path:
+    host_dir = tmp_path / SAR_GROUP / SAR_HOST
+    host_dir.mkdir(parents=True)
+    (host_dir / "sa01").write_bytes(b"not-real-sar-binary-data")
+    return host_dir
+
+
+def test_build_index_skips_host_when_subprocess_raises_oserror(
+    tmp_path: Path, monkeypatch
+):
+    _make_sa_host_dir(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/sadf")
+
+    def _raise(*args, **kwargs):
+        raise FileNotFoundError("sadf binary vanished")
+
+    monkeypatch.setattr("subprocess.run", _raise)
+    assert build_index(tmp_path) == []
+
+
+def test_build_index_skips_host_when_sadf_json_top_level_is_not_a_dict(
+    tmp_path: Path, monkeypatch
+):
+    _make_sa_host_dir(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/sadf")
+    monkeypatch.setattr(
+        "rrdmcp.sar_index._run_sadf_json", lambda sadf_exe, sa_file: []
+    )
+    assert build_index(tmp_path) == []
+
+
+def test_build_index_skips_host_when_sadf_json_hosts_entry_is_not_a_dict(
+    tmp_path: Path, monkeypatch
+):
+    _make_sa_host_dir(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/sadf")
+    monkeypatch.setattr(
+        "rrdmcp.sar_index._run_sadf_json",
+        lambda sadf_exe, sa_file: {"sysstat": {"hosts": ["not-a-dict"]}},
+    )
+    assert build_index(tmp_path) == []
+
+
 def test_build_index_discovers_entries_from_real_sar_log(sar_root: Path):
     entries = build_index(sar_root)
     assert len(entries) > 0

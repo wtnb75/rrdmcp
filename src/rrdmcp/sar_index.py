@@ -135,7 +135,7 @@ def _run_sadf_json(sadf_exe: str, sa_file: Path) -> dict | None:
             timeout=SADF_TIMEOUT_SECONDS,
             check=True,
         )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         return None
     try:
         return json.loads(proc.stdout)
@@ -162,13 +162,16 @@ def build_index(base_path: Path) -> list[NormalizedField]:
             if not sa_files:
                 continue
             data = _run_sadf_json(sadf_exe, sa_files[-1])
-            if data is None:
+            if not isinstance(data, dict):
                 continue
-            hosts = data.get("sysstat", {}).get("hosts", [])
-            if not hosts:
+            sysstat = data.get("sysstat")
+            if not isinstance(sysstat, dict):
+                continue
+            hosts = sysstat.get("hosts", [])
+            if not hosts or not isinstance(hosts[0], dict):
                 continue
             statistics = hosts[0].get("statistics", [])
-            if not statistics:
+            if not statistics or not isinstance(statistics[-1], dict):
                 continue
             metrics = walk_statistics(statistics[-1])
             for plugin, fields in metrics.items():
