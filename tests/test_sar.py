@@ -1,8 +1,14 @@
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from rrdmcp.errors import SarInvalidTimeError
+from rrdmcp import sar
+from rrdmcp.errors import (
+    SarFileNotAvailableError,
+    SarInvalidTimeError,
+    SarToolTimeoutError,
+)
 from rrdmcp.sar import _date_range, _normalize_time_to_epoch, fetch
 
 SAR_GROUP = "sargroup"
@@ -49,6 +55,80 @@ def test_fetch_returns_empty_points_when_no_sa_files_exist(tmp_path: Path):
     result = fetch(tmp_path, "cpu-load.all", "usr", "1757246400", "1757250000")
     assert result.points == []
     assert result.ds_names == ["usr"]
+
+
+def test_fetch_raises_file_not_available_on_called_process_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    host_dir = tmp_path / SAR_GROUP / SAR_HOST
+    host_dir.mkdir(parents=True)
+    (host_dir / "sa05").write_text("")
+
+    monkeypatch.setattr(sar.shutil, "which", lambda name: "/usr/bin/sadf")
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, args[0], stderr="boom")
+
+    monkeypatch.setattr(sar.subprocess, "run", fake_run)
+
+    with pytest.raises(SarFileNotAvailableError):
+        fetch(
+            host_dir,
+            "cpu-load.all",
+            "usr",
+            "2020-01-05T00:00:00Z",
+            "2020-01-05T01:00:00Z",
+        )
+
+
+def test_fetch_raises_timeout_error_when_sadf_times_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    host_dir = tmp_path / SAR_GROUP / SAR_HOST
+    host_dir.mkdir(parents=True)
+    (host_dir / "sa05").write_text("")
+
+    monkeypatch.setattr(sar.shutil, "which", lambda name: "/usr/bin/sadf")
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=sar.SADF_TIMEOUT_SECONDS)
+
+    monkeypatch.setattr(sar.subprocess, "run", fake_run)
+
+    with pytest.raises(SarToolTimeoutError):
+        fetch(
+            host_dir,
+            "cpu-load.all",
+            "usr",
+            "2020-01-05T00:00:00Z",
+            "2020-01-05T01:00:00Z",
+        )
+
+
+def test_fetch_raises_file_not_available_on_unparseable_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    host_dir = tmp_path / SAR_GROUP / SAR_HOST
+    host_dir.mkdir(parents=True)
+    (host_dir / "sa05").write_text("")
+
+    monkeypatch.setattr(sar.shutil, "which", lambda name: "/usr/bin/sadf")
+
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args[0], 0, stdout="not valid json", stderr=""
+        )
+
+    monkeypatch.setattr(sar.subprocess, "run", fake_run)
+
+    with pytest.raises(SarFileNotAvailableError):
+        fetch(
+            host_dir,
+            "cpu-load.all",
+            "usr",
+            "2020-01-05T00:00:00Z",
+            "2020-01-05T01:00:00Z",
+        )
 
 
 def test_fetch_returns_points_from_real_sar_log(sar_root: Path):

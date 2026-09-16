@@ -80,7 +80,12 @@ def _run_sadf(sa_file: Path, start_hms: str | None, end_hms: str | None) -> dict
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
         raise SarFileNotAvailableError(f"sadf failed on {sa_file}: {stderr}") from exc
-    return json.loads(proc.stdout)
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise SarFileNotAvailableError(
+            f"sadf produced unparseable JSON output for {sa_file}"
+        ) from exc
 
 
 def _extract_points(
