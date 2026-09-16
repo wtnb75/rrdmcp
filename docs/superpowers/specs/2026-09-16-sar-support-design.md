@@ -52,12 +52,32 @@ Muninとsarは同一サーバーインスタンスで同時に有効化でき、
 
 ### plugin/fieldの決定
 
-各hostディレクトリの最新の`saXX`ファイル1つを`sadf -j -- -A <file>`で読み、そのJSON構造からplugin/fieldを機械的に導出する:
+各hostディレクトリの最新の`saXX`ファイル1つを`sadf -j -- -A <file>`で読み、そのJSON構造からplugin/fieldを機械的に導出する。
 
-- トップレベルキー(`cpu-load`, `memory`, `disk`, `network`等)をactivityとする
-- 値が配列で、要素が`cpu`/`disk_device`/`iface`等のインスタンスキーを持つ場合 → `plugin = "{activity}.{instance}"`(例: `cpu-load.cpu0`, `disk.sda`, `network.eth0`)
-- 値が単一オブジェクトの場合(システム全体のメモリなど) → `plugin = activity`
-- 各activity内の残りのキー(`usr`, `sys`, `memfree`, `tps`等)が`field`になる
+Debian 12 + sysstat 12.6.1で実際に確認したところ、`sadf -j`の1統計ブロック(`statistics[i]`)は以下のようにトップレベルだけでなく1〜2段ネストした構造を持つ(`timestamp`のみキーだが除外対象):
+
+```
+cpu-load: [{"cpu": "all", "usr": .., "sys": .., ...}, {"cpu": "0", ...}, ...]
+memory: {"memfree": .., "avail": .., ...}                      # 全部スカラー
+io: {"tps": .., "io-reads": {"rtps": .., "bread": ..}, ...}    # スカラーとネストが混在
+disk: [{"disk-device": "vda", "tps": .., ...}, ...]
+network: {
+  "net-dev": [{"iface": "eth0", "rxpck": .., ...}, ...],
+  "net-nfs": {"call": .., "retrans": .., ...},                 # ネスト先も全部スカラー
+  ...
+}
+power-management: {"cpu-frequency": [{"number": "all", "frequency": ..}, ...]}
+filesystems: [{"filesystem": "/dev/vdb1", "MBfsfree": .., ...}, ...]
+```
+
+したがって「トップレベルキー=activity」という単純な決め打ちではなく、**再帰的にたどる**必要がある。`_walk(node: dict, path: str)`を次のルールで定義する:
+
+- `node`の各`key, value`について:
+  - `value`が配列で、各要素が辞書かつ既知の**インスタンスキー**(`cpu`, `disk-device`, `iface`, `filesystem`, `number`のホワイトリスト)のいずれかを持つ場合 → 要素ごとに`plugin = "{path}.{key}.{instance値}"`、インスタンスキー以外の残りのキーが`field`になる(例: `cpu-load.cpu0`, `disk.vda`, `network.net-dev.eth0`, `power-management.cpu-frequency.all`, `filesystems./dev/vdb1`)。インスタンス値はplugin名の一部になるため`rrd.sanitize_name`と同じ規則でサニタイズする
+  - `value`が配列だが上記に当てはまらない場合 → 未対応構造としてスキップする(v1では扱わない)
+  - `value`が辞書の場合 → その中のスカラー値(int/float)だけを集めて`plugin = "{path}.{key}"`のfieldとし、辞書/配列の値を持つキーがあれば`path = "{path}.{key}"`として同じ関数を再帰する(例: `io`は`tps`等のスカラーで`plugin=io`を作りつつ、`io-reads`/`io-writes`/`io-discard`はさらに`plugin=io.io-reads`等を作る)
+  - `value`がスカラーの場合は無視する(通常起こらないが、トップレベル直下に将来スカラーキーが増えても安全に無視する)
+- 最上位の`_walk`呼び出しでは`timestamp`と`restarts`キーを最初に除外する
 
 ### メタデータ補完
 
