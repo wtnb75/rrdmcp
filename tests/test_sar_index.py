@@ -1,0 +1,92 @@
+from rrdmcp.sar_index import SAR_ACTIVITY_META, SAR_FIELD_META, activity_key, walk_statistics
+
+# Debian 12 + sysstat 12.6.1 の `sadf -j -- -A` 実出力を縮小したサンプル
+# (timestamp/restartsは呼び出し側で除外される前提なので含めない)
+SAMPLE_STATISTICS_BLOCK = {
+    "timestamp": {"date": "2026-09-16", "time": "12:00:00", "utc": 1, "interval": 600},
+    "cpu-load": [
+        {"cpu": "all", "usr": 1.5, "sys": 0.5, "idle": 98.0},
+        {"cpu": "0", "usr": 2.0, "sys": 1.0, "idle": 97.0},
+    ],
+    "memory": {"memfree": 5840512, "memused": 442436, "avail": 7330044},
+    "io": {
+        "tps": 1.2,
+        "io-reads": {"rtps": 0.0, "bread": 0.0},
+        "io-writes": {"wtps": 1.2, "bwrtn": 15.69},
+    },
+    "disk": [
+        {"disk-device": "vda", "tps": 0.0, "rkB": 0.0, "wkB": 0.0},
+        {"disk-device": "vdb", "tps": 0.98, "rkB": 0.0, "wkB": 7.84},
+    ],
+    "network": {
+        "net-dev": [
+            {"iface": "lo", "rxkB": 0.0, "txkB": 0.0},
+            {"iface": "eth0", "rxkB": 0.04, "txkB": 0.04},
+        ],
+        "net-nfs": {"call": 0.0, "retrans": 0.0},
+    },
+    "power-management": {
+        "cpu-frequency": [{"number": "all", "frequency": 0.0}],
+    },
+    "filesystems": [
+        {"filesystem": "/dev/vdb1", "MBfsfree": 16307, "MBfsused": 22029},
+    ],
+    "restarts": [],
+}
+
+
+def test_walk_statistics_flattens_simple_array_with_instance_key():
+    result = walk_statistics(SAMPLE_STATISTICS_BLOCK)
+    assert result["cpu-load.all"] == {"usr": 1.5, "sys": 0.5, "idle": 98.0}
+    assert result["cpu-load.0"] == {"usr": 2.0, "sys": 1.0, "idle": 97.0}
+    assert result["disk.vda"] == {"tps": 0.0, "rkB": 0.0, "wkB": 0.0}
+    assert result["disk.vdb"] == {"tps": 0.98, "rkB": 0.0, "wkB": 7.84}
+
+
+def test_walk_statistics_flattens_all_scalar_dict():
+    result = walk_statistics(SAMPLE_STATISTICS_BLOCK)
+    assert result["memory"] == {"memfree": 5840512, "memused": 442436, "avail": 7330044}
+
+
+def test_walk_statistics_handles_mixed_scalar_and_nested_dict():
+    result = walk_statistics(SAMPLE_STATISTICS_BLOCK)
+    assert result["io"] == {"tps": 1.2}
+    assert result["io.io-reads"] == {"rtps": 0.0, "bread": 0.0}
+    assert result["io.io-writes"] == {"wtps": 1.2, "bwrtn": 15.69}
+
+
+def test_walk_statistics_handles_two_level_nesting():
+    result = walk_statistics(SAMPLE_STATISTICS_BLOCK)
+    assert result["network.net-dev.eth0"] == {"rxkB": 0.04, "txkB": 0.04}
+    assert result["network.net-dev.lo"] == {"rxkB": 0.0, "txkB": 0.0}
+    assert result["network.net-nfs"] == {"call": 0.0, "retrans": 0.0}
+    assert result["power-management.cpu-frequency.all"] == {"frequency": 0.0}
+
+
+def test_walk_statistics_sanitizes_instance_values_with_slashes():
+    result = walk_statistics(SAMPLE_STATISTICS_BLOCK)
+    assert result["filesystems._dev_vdb1"] == {"MBfsfree": 16307, "MBfsused": 22029}
+
+
+def test_walk_statistics_excludes_timestamp_and_restarts():
+    result = walk_statistics(SAMPLE_STATISTICS_BLOCK)
+    assert "timestamp" not in result
+    assert "restarts" not in result
+    assert not any(k.startswith("restarts") for k in result)
+
+
+def test_activity_key_strips_instance_suffix():
+    assert activity_key("cpu-load.0") == "cpu-load"
+    assert activity_key("cpu-load.all") == "cpu-load"
+    assert activity_key("network.net-dev.eth0") == "network.net-dev"
+    assert activity_key("memory") == "memory"
+
+
+def test_activity_key_falls_back_to_plugin_when_unknown():
+    assert activity_key("io.io-reads") == "io.io-reads"
+
+
+def test_sar_activity_meta_has_entries_for_common_activities():
+    assert SAR_ACTIVITY_META["cpu-load"]["graph_title"]
+    assert SAR_ACTIVITY_META["memory"]["graph_vlabel"]
+    assert SAR_FIELD_META["cpu-load"]["usr"]
