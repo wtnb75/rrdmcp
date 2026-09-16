@@ -4,7 +4,7 @@ from pathlib import Path
 
 from mcp.server.mcpserver import Image, MCPServer
 
-from . import discovery, rrd
+from . import discovery, rrd, sar, sar_index
 from .errors import RrdMcpError
 from .munin_datafile import load_datafile
 
@@ -20,11 +20,20 @@ def _datafile_path() -> Path:
     return Path(os.environ.get("MUNIN_DATAFILE_PATH", default))
 
 
+def _sar_base_path() -> Path | None:
+    raw = os.environ.get("SAR_BASE_PATH")
+    return Path(raw) if raw else None
+
+
 def _load_entries() -> list[discovery.NormalizedField]:
     base_path = _base_path()
     datafile_path = _datafile_path()
     datafile_index = load_datafile(datafile_path) if datafile_path.exists() else None
-    return discovery.build_index(base_path, datafile_index)
+    entries = discovery.build_index(base_path, datafile_index)
+    sar_base = _sar_base_path()
+    if sar_base is not None:
+        entries = entries + sar_index.build_index(sar_base)
+    return entries
 
 
 @mcp.tool()
@@ -138,7 +147,9 @@ def fetch_series(
 
     `start`/`end` accept a unix timestamp, an ISO 8601 timestamp (e.g.
     "2026-09-07T12:00:00Z"; naive timestamps are treated as UTC), or any
-    string rrdtool understands (e.g. "-1d", "now").
+    string rrdtool understands (e.g. "-1d", "now"). Fields from the sar
+    data source only accept a unix timestamp or an ISO 8601 timestamp
+    (no rrdtool-style relative expressions).
 
     If `resolution` (seconds) is given, points are aggregated into
     UTC-epoch-aligned buckets of that size (avg/min/max/count) instead of
@@ -173,7 +184,10 @@ def fetch_series(
             return {
                 "error": f"RRD file not available for {group}/{host}/{plugin}/{field}"
             }
-        result = rrd.fetch(resolved.path, start, end)
+        if resolved.source == "munin":
+            result = rrd.fetch(resolved.path, start, end)
+        else:
+            result = sar.fetch(resolved.path, resolved.plugin, resolved.field, start, end)
         if summary:
             return {
                 "step": result.step,
@@ -219,27 +233,41 @@ def render_graph(
 
     `start`/`end` accept a unix timestamp, an ISO 8601 timestamp (e.g.
     "2026-09-07T12:00:00Z"; naive timestamps are treated as UTC), or any
-    string rrdtool understands (e.g. "-1d", "now").
+    string rrdtool understands (e.g. "-1d", "now"). Fields from the sar
+    data source only accept a unix timestamp or an ISO 8601 timestamp
+    (no rrdtool-style relative expressions).
     """
     try:
         entries = _load_entries()
         discovery._require_plugin(entries, group, host, plugin)
-        paths_and_labels = []
+        resolved_fields = []
         for field in fields:
             resolved = discovery.resolve_field(entries, group, host, plugin, field)
             if not resolved.rrd_available:
                 return {
                     "error": f"RRD file not available for {group}/{host}/{plugin}/{field}"
                 }
-            label = resolved.meta.label or field
-            paths_and_labels.append((resolved.path, label))
+            resolved_fields.append(resolved)
         plugins = discovery.list_plugins(entries, group, host)
         plugin_info = next(p for p in plugins if p["plugin"] == plugin)
         title = plugin_info["graph_title"] or f"{host} {plugin}"
         vlabel = plugin_info["graph_vlabel"] or ""
-        png_bytes = rrd.render_graph(
-            paths_and_labels, start, end, title, vlabel, width, height
-        )
+        source = resolved_fields[0].source if resolved_fields else "munin"
+        if source == "munin":
+            paths_and_labels = [
+                (r.path, r.meta.label or r.field) for r in resolved_fields
+            ]
+            png_bytes = rrd.render_graph(
+                paths_and_labels, start, end, title, vlabel, width, height
+            )
+        else:
+            points_and_labels = []
+            for r in resolved_fields:
+                fetched = sar.fetch(r.path, r.plugin, r.field, start, end)
+                points_and_labels.append((fetched.points, r.meta.label or r.field))
+            png_bytes = sar.render_graph(
+                points_and_labels, start, end, title, vlabel, width, height
+            )
         return Image(data=png_bytes, format="png")
     except RrdMcpError as exc:
         return {"error": str(exc)}
