@@ -76,7 +76,14 @@ def walk_statistics(node: dict, path: str = "") -> dict[str, dict[str, float | i
             if instance_key is None:
                 continue
             for item in value:
-                instance = sanitize_name(str(item[instance_key]))
+                instance_value = item.get(instance_key)
+                if instance_value is None:
+                    # Heterogeneous array: this element doesn't carry the
+                    # instance key inferred from the first element. Skip it
+                    # rather than raising, per build_index's "never raises"
+                    # contract.
+                    continue
+                instance = sanitize_name(str(instance_value))
                 plugin = f"{path}.{key}.{instance}" if path else f"{key}.{instance}"
                 fields = {
                     k: v
@@ -158,45 +165,65 @@ def build_index(base_path: Path) -> list[NormalizedField]:
     entries: list[NormalizedField] = []
     for group_dir in sorted(p for p in base_path.iterdir() if p.is_dir()):
         for host_dir in sorted(p for p in group_dir.iterdir() if p.is_dir()):
-            sa_files = _list_sa_files(host_dir)
-            if not sa_files:
-                continue
-            data = _run_sadf_json(sadf_exe, sa_files[-1])
-            if not isinstance(data, dict):
-                continue
-            sysstat = data.get("sysstat")
-            if not isinstance(sysstat, dict):
-                continue
-            hosts = sysstat.get("hosts", [])
-            if not hosts or not isinstance(hosts[0], dict):
-                continue
-            statistics = hosts[0].get("statistics", [])
-            if not statistics or not isinstance(statistics[-1], dict):
-                continue
-            metrics = walk_statistics(statistics[-1])
-            for plugin, fields in metrics.items():
-                key = activity_key(plugin)
-                activity_meta = SAR_ACTIVITY_META.get(key)
-                field_labels = SAR_FIELD_META.get(key, {})
-                plugin_meta = PluginMeta(
-                    graph_title=activity_meta["graph_title"] if activity_meta else None,
-                    graph_vlabel=activity_meta["graph_vlabel"] if activity_meta else None,
-                    graph_category=activity_meta["graph_category"] if activity_meta else None,
-                )
-                for field_name in fields:
-                    field_meta = FieldMeta(label=field_labels.get(field_name, field_name))
-                    entries.append(
-                        NormalizedField(
-                            group=group_dir.name,
-                            host=host_dir.name,
-                            plugin=plugin,
-                            field=field_name,
-                            meta=field_meta,
-                            plugin_meta=plugin_meta,
-                            path=host_dir,
-                            rrd_available=True,
-                            metadata_available=activity_meta is not None,
-                            source="sar",
-                        )
+            try:
+                sa_files = _list_sa_files(host_dir)
+                if not sa_files:
+                    continue
+                # Lexicographic filename order (sa01..sa31) doesn't track
+                # chronological order across a month boundary (sa01 can be
+                # more recent than sa28); pick by mtime instead.
+                latest_sa_file = max(sa_files, key=lambda p: p.stat().st_mtime)
+                data = _run_sadf_json(sadf_exe, latest_sa_file)
+                if not isinstance(data, dict):
+                    continue
+                sysstat = data.get("sysstat")
+                if not isinstance(sysstat, dict):
+                    continue
+                hosts = sysstat.get("hosts", [])
+                if not hosts or not isinstance(hosts[0], dict):
+                    continue
+                statistics = hosts[0].get("statistics", [])
+                if not statistics or not isinstance(statistics[-1], dict):
+                    continue
+                metrics = walk_statistics(statistics[-1])
+                for plugin, fields in metrics.items():
+                    key = activity_key(plugin)
+                    activity_meta = SAR_ACTIVITY_META.get(key)
+                    field_labels = SAR_FIELD_META.get(key, {})
+                    plugin_meta = PluginMeta(
+                        graph_title=activity_meta["graph_title"]
+                        if activity_meta
+                        else None,
+                        graph_vlabel=activity_meta["graph_vlabel"]
+                        if activity_meta
+                        else None,
+                        graph_category=activity_meta["graph_category"]
+                        if activity_meta
+                        else None,
                     )
+                    for field_name in fields:
+                        field_meta = FieldMeta(
+                            label=field_labels.get(field_name, field_name)
+                        )
+                        entries.append(
+                            NormalizedField(
+                                group=group_dir.name,
+                                host=host_dir.name,
+                                plugin=plugin,
+                                field=field_name,
+                                meta=field_meta,
+                                plugin_meta=plugin_meta,
+                                path=host_dir,
+                                rrd_available=True,
+                                metadata_available=activity_meta is not None,
+                                source="sar",
+                            )
+                        )
+            except Exception:  # noqa: BLE001, S112 -- intentionally broad: build_index
+                # must never raise (see docstring). A genuinely unexpected
+                # shape from one host must never take down entity discovery
+                # for other hosts, or for munin — matches the "skip on
+                # per-host failure" pattern used above for missing/unreadable
+                # sa files.
+                continue
     return entries

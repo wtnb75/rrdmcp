@@ -170,6 +170,7 @@ def list_fields(
             "extra": e.meta.extra,
             "rrd_available": e.rrd_available,
             "metadata_available": e.metadata_available,
+            "source": e.source,
         }
         for e in sorted(matched, key=lambda e: e.field)
     ]

@@ -87,6 +87,10 @@ def _run_sadf(sa_file: Path, start_hms: str | None, end_hms: str | None) -> dict
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
         raise SarFileNotAvailableError(f"sadf failed on {sa_file}: {stderr}") from exc
+    except OSError as exc:
+        raise SarFileNotAvailableError(
+            f"failed to execute sadf for {sa_file}: {exc}"
+        ) from exc
     try:
         return json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
@@ -104,8 +108,12 @@ def _extract_points(
     points: list[tuple[int, float | None]] = []
     for stat in hosts[0].get("statistics", []):
         ts = stat.get("timestamp", {})
+        date_str = ts.get("date")
+        time_str = ts.get("time")
+        if date_str is None or time_str is None:
+            continue
         dt = datetime.strptime(
-            f"{ts['date']} {ts['time']}", "%Y-%m-%d %H:%M:%S"
+            f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S"
         ).replace(tzinfo=UTC)
         metrics = walk_statistics(stat)
         value = metrics.get(plugin, {}).get(field)
@@ -132,8 +140,16 @@ def fetch(host_dir: Path, plugin: str, field: str, start: str, end: str) -> Fetc
     end_dt = datetime.fromtimestamp(end_epoch, tz=UTC)
 
     all_points: list[tuple[int, float | None]] = []
+    seen_files: set[Path] = set()
     for day in _date_range(start_dt, end_dt):
         sa_file = _sa_file_for_date(host_dir, day)
+        if sa_file in seen_files:
+            # Ranges spanning >31 days (or crossing a month boundary) can
+            # map two different calendar days onto the same sa* file
+            # (e.g. day 5 of two different months both resolve to sa05).
+            # Skip it the second time to avoid duplicate/misattributed points.
+            continue
+        seen_files.add(sa_file)
         if not sa_file.exists():
             continue
         start_hms = start_dt.strftime("%H:%M:%S") if day == start_dt.date() else None
@@ -141,6 +157,9 @@ def fetch(host_dir: Path, plugin: str, field: str, start: str, end: str) -> Fetc
         data = _run_sadf(sa_file, start_hms, end_hms)
         all_points.extend(_extract_points(data, plugin, field))
 
+    all_points = [
+        (ts, value) for ts, value in all_points if start_epoch <= ts <= end_epoch
+    ]
     all_points.sort(key=lambda p: p[0])
     return FetchResult(
         step=_infer_step(all_points), ds_names=[field], points=all_points

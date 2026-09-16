@@ -38,7 +38,7 @@ def _load_entries() -> list[discovery.NormalizedField]:
 
 @mcp.tool()
 def list_hosts() -> list[dict] | dict:
-    """List all (group, host) pairs discovered from the Munin datafile."""
+    """List all (group, host) pairs discovered from Munin and/or sar sources."""
     try:
         return discovery.list_hosts(_load_entries())
     except RrdMcpError as exc:
@@ -86,6 +86,7 @@ def get_metadata(group: str, host: str, plugin: str, field: str | None = None) -
             "extra": resolved.meta.extra,
             "rrd_available": resolved.rrd_available,
             "metadata_available": resolved.metadata_available,
+            "source": resolved.source,
         }
     except RrdMcpError as exc:
         return {"error": str(exc)}

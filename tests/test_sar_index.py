@@ -83,6 +83,21 @@ def test_walk_statistics_excludes_timestamp_and_restarts():
     assert not any(k.startswith("restarts") for k in result)
 
 
+def test_walk_statistics_skips_elements_missing_the_instance_key():
+    # Heterogeneous array: the first element carries "cpu" (which picks
+    # "cpu" as the inferred instance_key for the whole array), but a later
+    # element doesn't have it. Must be skipped, not raise KeyError.
+    block = {
+        "cpu-load": [
+            {"cpu": "all", "usr": 1.5},
+            {"usr": 99.0},  # no "cpu" key
+        ],
+    }
+    result = walk_statistics(block)
+    assert result["cpu-load.all"] == {"usr": 1.5}
+    assert len(result) == 1
+
+
 def test_activity_key_strips_instance_suffix():
     assert activity_key("cpu-load.0") == "cpu-load"
     assert activity_key("cpu-load.all") == "cpu-load"
@@ -156,6 +171,55 @@ def test_build_index_skips_host_when_sadf_json_hosts_entry_is_not_a_dict(
         lambda sadf_exe, sa_file: {"sysstat": {"hosts": ["not-a-dict"]}},
     )
     assert build_index(tmp_path) == []
+
+
+def test_build_index_skips_host_on_unexpected_exception_but_keeps_others(
+    tmp_path: Path, monkeypatch
+):
+    """One host raising an unexpected exception mid-processing must not
+    abort discovery for other hosts (per build_index's "never raises"
+    contract, and to keep munin-only callers of _load_entries safe from a
+    single malformed sar host)."""
+    import rrdmcp.sar_index as sar_index_module
+
+    bad_host_dir = tmp_path / SAR_GROUP / "badhost"
+    bad_host_dir.mkdir(parents=True)
+    (bad_host_dir / "sa01").write_bytes(b"x")
+
+    good_host_dir = tmp_path / SAR_GROUP / SAR_HOST
+    good_host_dir.mkdir(parents=True)
+    (good_host_dir / "sa01").write_bytes(b"x")
+
+    def fake_run_sadf_json(sadf_exe, sa_file):
+        host_name = sa_file.parent.name
+        marker = "boom" if host_name == "badhost" else "cpu-load"
+        return {
+            "sysstat": {
+                "hosts": [
+                    {
+                        "statistics": [
+                            {marker: [{"cpu": "all", "usr": 1.0}]},
+                        ]
+                    }
+                ]
+            }
+        }
+
+    real_walk_statistics = sar_index_module.walk_statistics
+
+    def fake_walk_statistics(node, path=""):
+        if "boom" in node:
+            raise RuntimeError("simulated unexpected shape")
+        return real_walk_statistics(node, path)
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/sadf")
+    monkeypatch.setattr(sar_index_module, "_run_sadf_json", fake_run_sadf_json)
+    monkeypatch.setattr(sar_index_module, "walk_statistics", fake_walk_statistics)
+
+    entries = sar_index_module.build_index(tmp_path)
+
+    assert all(e.host != "badhost" for e in entries)
+    assert any(e.host == SAR_HOST for e in entries)
 
 
 def test_build_index_discovers_entries_from_real_sar_log(sar_root: Path):

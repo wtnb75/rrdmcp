@@ -131,6 +131,131 @@ def test_fetch_raises_file_not_available_on_unparseable_json(
         )
 
 
+def test_fetch_dedups_and_filters_points_for_range_spanning_month_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A range >31 days maps multiple calendar days onto the same sa* file
+    (day-of-month collision, e.g. Jan 5 / Feb 5 / Mar 5 all -> sa05).
+
+    fetch() must (a) read that file only once per call rather than once per
+    colliding day, and (b) filter out any points whose real timestamp falls
+    outside the requested [start, end] window even though _extract_points
+    read them correctly.
+    """
+    from datetime import UTC, datetime
+
+    host_dir = tmp_path / SAR_GROUP / SAR_HOST
+    host_dir.mkdir(parents=True)
+    (host_dir / "sa05").write_text("")
+
+    call_count = {"sa05": 0}
+
+    def fake_run_sadf(sa_file, start_hms, end_hms):
+        if sa_file.name == "sa05":
+            call_count["sa05"] += 1
+        return {
+            "sysstat": {
+                "hosts": [
+                    {
+                        "statistics": [
+                            {
+                                "timestamp": {
+                                    "date": "2019-12-01",
+                                    "time": "00:00:00",
+                                },
+                                "cpu-load": [{"cpu": "all", "usr": 999.0}],
+                            },
+                            {
+                                "timestamp": {
+                                    "date": "2020-01-05",
+                                    "time": "10:00:00",
+                                },
+                                "cpu-load": [{"cpu": "all", "usr": 1.0}],
+                            },
+                        ]
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(sar, "_run_sadf", fake_run_sadf)
+
+    start = datetime(2020, 1, 5, 0, 0, 0, tzinfo=UTC)
+    end = datetime(2020, 3, 5, 23, 0, 0, tzinfo=UTC)
+    start_epoch = int(start.timestamp())
+    end_epoch = int(end.timestamp())
+
+    result = fetch(host_dir, "cpu-load.all", "usr", str(start_epoch), str(end_epoch))
+
+    # sa05 is hit by day-of-month collisions for Jan 5, Feb 5, and Mar 5
+    # within this range, but must only be read (and its points merged) once.
+    assert call_count["sa05"] == 1
+
+    timestamps = [ts for ts, _ in result.points]
+    assert len(timestamps) == len(set(timestamps))
+    assert all(start_epoch <= ts <= end_epoch for ts in timestamps)
+    # The 2019-12-01 point is outside the requested window and must be
+    # filtered out even though it was read successfully.
+    assert not any(v == 999.0 for _, v in result.points)
+
+
+def test_fetch_raises_file_not_available_on_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    host_dir = tmp_path / SAR_GROUP / SAR_HOST
+    host_dir.mkdir(parents=True)
+    (host_dir / "sa05").write_text("")
+
+    monkeypatch.setattr(sar.shutil, "which", lambda name: "/usr/bin/sadf")
+
+    def fake_run(*args, **kwargs):
+        raise OSError("exec format error")
+
+    monkeypatch.setattr(sar.subprocess, "run", fake_run)
+
+    with pytest.raises(SarFileNotAvailableError):
+        fetch(
+            host_dir,
+            "cpu-load.all",
+            "usr",
+            "2020-01-05T00:00:00Z",
+            "2020-01-05T01:00:00Z",
+        )
+
+
+def test_extract_points_skips_statistics_entries_missing_date_or_time():
+    from rrdmcp.sar import _extract_points
+
+    data = {
+        "sysstat": {
+            "hosts": [
+                {
+                    "statistics": [
+                        {
+                            "timestamp": {"time": "10:00:00"},  # missing date
+                            "cpu-load": [{"cpu": "all", "usr": 1.0}],
+                        },
+                        {
+                            "timestamp": {"date": "2020-01-05"},  # missing time
+                            "cpu-load": [{"cpu": "all", "usr": 2.0}],
+                        },
+                        {
+                            "timestamp": {
+                                "date": "2020-01-05",
+                                "time": "11:00:00",
+                            },
+                            "cpu-load": [{"cpu": "all", "usr": 3.0}],
+                        },
+                    ]
+                }
+            ]
+        }
+    }
+    points = _extract_points(data, "cpu-load.all", "usr")
+    assert len(points) == 1
+    assert points[0][1] == 3.0
+
+
 def test_fetch_returns_points_from_real_sar_log(sar_root: Path):
     host_dir = sar_root / SAR_GROUP / SAR_HOST
     yesterday_epoch = int(__import__("time").time()) - 60

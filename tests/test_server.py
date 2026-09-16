@@ -15,6 +15,11 @@ SAR_HOST = "sarhost.example.com"
 def _configure_env(monkeypatch: pytest.MonkeyPatch, munin_root: Path):
     monkeypatch.setenv("MUNIN_RRD_BASE_PATH", str(munin_root))
     monkeypatch.setenv("MUNIN_DATAFILE_PATH", str(munin_root / "datafile"))
+    # Hermetic by default: tests that need sar set SAR_BASE_PATH themselves
+    # via monkeypatch.setenv, but the whole file's isolation from an
+    # ambient SAR_BASE_PATH in the dev/CI shell depends on this, not just
+    # the one test that asserts sar is skipped when unset.
+    monkeypatch.delenv("SAR_BASE_PATH", raising=False)
 
 
 def test_list_hosts_tool():
@@ -45,6 +50,7 @@ def test_get_metadata_tool_for_single_field():
     assert result["warning"] == "80"
     assert result["rrd_available"] is True
     assert result["extra"] == {}
+    assert result["source"] == "munin"
 
 
 def test_get_metadata_tool_for_whole_plugin():
@@ -409,6 +415,27 @@ def test_fetch_series_tool_dispatches_to_sar_backend(
     )
     assert "points" in result
     assert result["ds_names"] == ["usr"]
+
+
+def test_get_metadata_tool_for_single_field_exposes_sar_source(
+    monkeypatch: pytest.MonkeyPatch, sar_root: Path
+):
+    from rrdmcp import server
+
+    monkeypatch.setenv("SAR_BASE_PATH", str(sar_root))
+    entries = server._load_entries()
+    cpu_field = next(
+        e
+        for e in entries
+        if e.source == "sar"
+        and e.group == SAR_GROUP
+        and e.host == SAR_HOST
+        and e.plugin.startswith("cpu-load.")
+        and e.field == "usr"
+    )
+
+    result = server.get_metadata(SAR_GROUP, SAR_HOST, cpu_field.plugin, "usr")
+    assert result["source"] == "sar"
 
 
 def test_render_graph_tool_dispatches_to_sar_backend(

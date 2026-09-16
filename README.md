@@ -127,4 +127,4 @@ If you mount `MUNIN_RRD_BASE_PATH` at a different path, add
 - If `datafile` is unavailable, discovery falls back to best-effort parsing of RRD filenames, losing precision on host/plugin boundaries and all metadata
 - Graph rendering is a simplified version — it doesn't reproduce Munin's own threshold bands, stacking, CDEFs, etc.
 - sar support requires log files pre-aggregated under `SAR_BASE_PATH/<group>/<host>/saXX` (e.g. via `rsync` from each host's `/var/log/sa`); it does not read `/var/log/sa` directly or collect data itself
-- sar plugin/field discovery only recognizes a fixed set of `sadf -j` structures (see `sar_index.SAR_ACTIVITY_META`); uncommon activities still work but show up without a human-friendly title/label
+- sar plugin/field discovery only recognizes activities matching a fixed set of `sadf -j` JSON shapes (scalar dicts, or arrays keyed by one of `cpu`/`disk-device`/`iface`/`filesystem`/`number`); activities matching a recognized shape but missing from `sar_index.SAR_ACTIVITY_META`/`SAR_FIELD_META` show up without a human-friendly title/label, while activities with an unrecognized shape are not discovered at all
