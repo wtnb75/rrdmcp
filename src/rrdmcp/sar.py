@@ -1,3 +1,4 @@
+import io
 import json
 import shutil
 import subprocess
@@ -5,12 +6,18 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 from .errors import (
     SarFileNotAvailableError,
     SarInvalidTimeError,
     SarToolNotFoundError,
     SarToolTimeoutError,
 )
+from .rrd import GRAPH_COLORS
 from .sar_index import walk_statistics
 from .timeutil import try_parse_iso8601
 
@@ -138,3 +145,29 @@ def fetch(host_dir: Path, plugin: str, field: str, start: str, end: str) -> Fetc
     return FetchResult(
         step=_infer_step(all_points), ds_names=[field], points=all_points
     )
+
+
+def render_graph(
+    points_and_labels: list[tuple[list[tuple[int, float | None]], str]],
+    start: str,
+    end: str,
+    title: str,
+    vlabel: str,
+    width: int = 800,
+    height: int = 300,
+) -> bytes:
+    fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
+    for idx, (points, label) in enumerate(points_and_labels):
+        times = [datetime.fromtimestamp(ts, tz=UTC) for ts, _ in points]
+        values = [v for _, v in points]
+        color = GRAPH_COLORS[idx % len(GRAPH_COLORS)]
+        ax.plot(times, values, label=label, color=color)
+    ax.set_title(title)
+    ax.set_ylabel(vlabel)
+    if points_and_labels:
+        ax.legend()
+    fig.autofmt_xdate()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    plt.close(fig)
+    return buf.getvalue()

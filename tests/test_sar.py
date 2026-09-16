@@ -9,7 +9,7 @@ from rrdmcp.errors import (
     SarInvalidTimeError,
     SarToolTimeoutError,
 )
-from rrdmcp.sar import _date_range, _normalize_time_to_epoch, fetch
+from rrdmcp.sar import _date_range, _normalize_time_to_epoch, fetch, render_graph
 
 SAR_GROUP = "sargroup"
 SAR_HOST = "sarhost.example.com"
@@ -141,3 +141,22 @@ def test_fetch_returns_points_from_real_sar_log(sar_root: Path):
     assert result.ds_names == ["usr"]
     assert len(result.points) > 0
     assert all(isinstance(ts, int) for ts, _ in result.points)
+
+
+def test_render_graph_returns_png_bytes():
+    points_a = [(1000, 10.0), (1010, 20.0), (1020, 15.0)]
+    points_b = [(1000, 5.0), (1010, 8.0), (1020, 6.0)]
+    png = render_graph(
+        [(points_a, "User"), (points_b, "System")],
+        "1000",
+        "1020",
+        "CPU usage",
+        "%",
+    )
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_render_graph_handles_none_values():
+    points = [(1000, 10.0), (1010, None), (1020, 15.0)]
+    png = render_graph([(points, "User")], "1000", "1020", "CPU usage", "%")
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"

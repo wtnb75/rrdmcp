@@ -10,7 +10,7 @@ from .timeutil import try_parse_iso8601
 RRDTOOL_TIMEOUT_SECONDS = 30
 
 _SANITIZE_RE = re.compile(r"[^A-Za-z0-9_.]")
-_GRAPH_COLORS = ["#0000FF", "#FF0000", "#00AA00", "#FF8800", "#AA00AA", "#00AAAA"]
+GRAPH_COLORS = ["#0000FF", "#FF0000", "#00AA00", "#FF8800", "#AA00AA", "#00AAAA"]
 
 
 def sanitize_name(name: str) -> str:
@@ -153,7 +153,7 @@ def render_graph(
     ]
     for idx, (path, label) in enumerate(paths_and_labels):
         ds_name = f"v{idx}"
-        color = _GRAPH_COLORS[idx % len(_GRAPH_COLORS)]
+        color = GRAPH_COLORS[idx % len(GRAPH_COLORS)]
         args.append(f"DEF:{ds_name}={path}:42:AVERAGE")
         args.append(f"LINE1:{ds_name}{color}:{label}")
     proc = _run_rrdtool(args, text=False)
