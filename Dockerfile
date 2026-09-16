@@ -16,10 +16,11 @@ RUN uv sync --frozen --no-dev --no-editable
 
 FROM ghcr.io/astral-sh/uv:python3.14-trixie-slim
 
-# rrdtool is a runtime dependency invoked as a subprocess (see src/rrdmcp/rrd.py),
-# not a Python package — it must be installed via apt.
+# rrdtool and sysstat (for sadf) are runtime dependencies invoked as
+# subprocesses (see src/rrdmcp/rrd.py, src/rrdmcp/sar.py), not Python
+# packages — they must be installed via apt.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends rrdtool \
+    && apt-get install -y --no-install-recommends rrdtool sysstat \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1000 rrdmcp

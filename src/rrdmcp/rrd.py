@@ -2,15 +2,15 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 from .errors import RrdFileNotAvailableError, RrdToolNotFoundError, RrdToolTimeoutError
+from .timeutil import try_parse_iso8601
 
 RRDTOOL_TIMEOUT_SECONDS = 30
 
 _SANITIZE_RE = re.compile(r"[^A-Za-z0-9_.]")
-_GRAPH_COLORS = ["#0000FF", "#FF0000", "#00AA00", "#FF8800", "#AA00AA", "#00AAAA"]
+GRAPH_COLORS = ["#0000FF", "#FF0000", "#00AA00", "#FF8800", "#AA00AA", "#00AAAA"]
 
 
 def sanitize_name(name: str) -> str:
@@ -33,15 +33,9 @@ def _normalize_time(value: str) -> str:
 
     Unix timestamps and rrdtool AT-STYLE expressions (e.g. "-1d", "now") are
     not valid ISO 8601 and fail to parse, so they pass through unchanged.
-    Naive (timezone-less) timestamps are assumed to be UTC.
     """
-    try:
-        dt = datetime.fromisoformat(value)
-    except ValueError:
-        return value
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return str(int(dt.timestamp()))
+    epoch = try_parse_iso8601(value)
+    return str(epoch) if epoch is not None else value
 
 
 def require_rrdtool() -> str:
@@ -159,7 +153,7 @@ def render_graph(
     ]
     for idx, (path, label) in enumerate(paths_and_labels):
         ds_name = f"v{idx}"
-        color = _GRAPH_COLORS[idx % len(_GRAPH_COLORS)]
+        color = GRAPH_COLORS[idx % len(GRAPH_COLORS)]
         args.append(f"DEF:{ds_name}={path}:42:AVERAGE")
         args.append(f"LINE1:{ds_name}{color}:{label}")
     proc = _run_rrdtool(args, text=False)

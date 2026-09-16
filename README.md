@@ -44,6 +44,7 @@ running Munin, since it's a dependency of `munin-node`/`munin`).
 | `RRDMCP_TRANSPORT` | `stdio` | Transport to serve: `stdio` or `streamable-http` |
 | `RRDMCP_HOST` | `127.0.0.1` | Bind host for `streamable-http` |
 | `RRDMCP_PORT` | `8000` | Bind port for `streamable-http` |
+| `SAR_BASE_PATH` | (unset — sar support disabled) | Root directory of sar logs, laid out as `<group>/<host>/saXX` (requires the `sadf` command on `PATH`, from the `sysstat` package) |
 
 ## Running
 
@@ -114,7 +115,7 @@ If you mount `MUNIN_RRD_BASE_PATH` at a different path, add
 - `list_plugins(group, host)` — list plugins for a host
 - `list_fields(group, host, plugin)` — list a plugin's fields (label, type, thresholds, etc.)
 - `get_metadata(group, host, plugin, field?)` — detailed metadata for a whole plugin, or a single field
-- `fetch_series(group, host, plugin, field, start, end, resolution?, summary?, top_n?, top_by?, order?)` — fetch time series data. `start`/`end` accept a unix timestamp, an ISO 8601 timestamp (e.g. `2026-09-07T12:00:00Z`; naive timestamps are treated as UTC), or any string `rrdtool` understands (`-1d`, `now`, etc.)
+- `fetch_series(group, host, plugin, field, start, end, resolution?, summary?, top_n?, top_by?, order?)` — fetch time series data. `start`/`end` accept a unix timestamp, an ISO 8601 timestamp (e.g. `2026-09-07T12:00:00Z`; naive timestamps are treated as UTC), or any string `rrdtool` understands (`-1d`, `now`, etc.). Fields backed by the sar data source only accept a unix timestamp or an ISO 8601 timestamp for `start`/`end` (rrdtool-style relative expressions like `-1d` are munin-only).
   - With no options, returns raw `points` as-is
   - `resolution` (seconds) aggregates into UTC-epoch-aligned `buckets` (avg/min/max/count) instead of raw points
   - `summary=true` aggregates the whole range into a single `summary` (avg/min/max/count); cannot be combined with `resolution`
@@ -125,3 +126,5 @@ If you mount `MUNIN_RRD_BASE_PATH` at a different path, add
 
 - If `datafile` is unavailable, discovery falls back to best-effort parsing of RRD filenames, losing precision on host/plugin boundaries and all metadata
 - Graph rendering is a simplified version — it doesn't reproduce Munin's own threshold bands, stacking, CDEFs, etc.
+- sar support requires log files pre-aggregated under `SAR_BASE_PATH/<group>/<host>/saXX` (e.g. via `rsync` from each host's `/var/log/sa`); it does not read `/var/log/sa` directly or collect data itself
+- sar plugin/field discovery only recognizes activities matching a fixed set of `sadf -j` JSON shapes (scalar dicts, or arrays keyed by one of `cpu`/`disk-device`/`iface`/`filesystem`/`number`); activities matching a recognized shape but missing from `sar_index.SAR_ACTIVITY_META`/`SAR_FIELD_META` show up without a human-friendly title/label, while activities with an unrecognized shape are not discovered at all

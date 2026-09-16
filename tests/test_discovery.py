@@ -65,6 +65,13 @@ def test_list_fields(munin_root: Path):
     assert user_field["rrd_available"] is True
 
 
+def test_list_fields_exposes_source(munin_root: Path):
+    datafile_index = load_datafile(munin_root / "datafile")
+    entries = build_index(munin_root, datafile_index)
+    fields = list_fields(entries, "testgroup", "testhost.example.com", "cpu")
+    assert all(f["source"] == "munin" for f in fields)
+
+
 def test_list_fields_raises_for_unknown_plugin(munin_root: Path):
     datafile_index = load_datafile(munin_root / "datafile")
     entries = build_index(munin_root, datafile_index)
@@ -175,3 +182,14 @@ testgroup;testhost.example.com:cpu.system.type GAUGE
     # No duplicate paths between the datafile-based and fallback-based entries.
     paths = [e.path for e in entries]
     assert len(paths) == len(set(paths))
+
+
+def test_build_index_sets_source_to_munin(munin_root: Path):
+    datafile_index = load_datafile(munin_root / "datafile")
+    entries = build_index(munin_root, datafile_index)
+    assert all(e.source == "munin" for e in entries)
+
+
+def test_build_index_falls_back_sets_source_to_munin(munin_root: Path):
+    entries = build_index(munin_root, None)
+    assert all(e.source == "munin" for e in entries)

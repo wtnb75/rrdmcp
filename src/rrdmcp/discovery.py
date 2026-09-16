@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from .errors import FieldNotFoundError, HostNotFoundError, PluginNotFoundError
 from .munin_datafile import DatafileIndex, FieldMeta, PluginMeta
@@ -22,6 +23,7 @@ class NormalizedField:
     path: Path
     rrd_available: bool
     metadata_available: bool
+    source: Literal["munin", "sar"] = "munin"
 
 
 def fallback_scan(base_path: Path) -> list[dict]:
@@ -168,6 +170,7 @@ def list_fields(
             "extra": e.meta.extra,
             "rrd_available": e.rrd_available,
             "metadata_available": e.metadata_available,
+            "source": e.source,
         }
         for e in sorted(matched, key=lambda e: e.field)
     ]

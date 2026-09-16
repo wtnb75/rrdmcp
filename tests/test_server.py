@@ -1,12 +1,25 @@
+import time
 from pathlib import Path
 
 import pytest
+
+# Matches the sar_root fixture in tests/conftest.py. Not imported from
+# tests.conftest because tests/__init__.py doesn't exist, so `tests` isn't
+# guaranteed importable as a package under pytest's default rootdir
+# insertion; local constants are the stable, repo-wide convention instead.
+SAR_GROUP = "sargroup"
+SAR_HOST = "sarhost.example.com"
 
 
 @pytest.fixture(autouse=True)
 def _configure_env(monkeypatch: pytest.MonkeyPatch, munin_root: Path):
     monkeypatch.setenv("MUNIN_RRD_BASE_PATH", str(munin_root))
     monkeypatch.setenv("MUNIN_DATAFILE_PATH", str(munin_root / "datafile"))
+    # Hermetic by default: tests that need sar set SAR_BASE_PATH themselves
+    # via monkeypatch.setenv, but the whole file's isolation from an
+    # ambient SAR_BASE_PATH in the dev/CI shell depends on this, not just
+    # the one test that asserts sar is skipped when unset.
+    monkeypatch.delenv("SAR_BASE_PATH", raising=False)
 
 
 def test_list_hosts_tool():
@@ -37,6 +50,7 @@ def test_get_metadata_tool_for_single_field():
     assert result["warning"] == "80"
     assert result["rrd_available"] is True
     assert result["extra"] == {}
+    assert result["source"] == "munin"
 
 
 def test_get_metadata_tool_for_whole_plugin():
@@ -353,6 +367,106 @@ def test_render_graph_tool_returns_error_dict_for_unknown_plugin_with_empty_fiel
     )
     assert isinstance(result, dict)
     assert "error" in result
+
+
+def test_load_entries_merges_munin_and_sar(
+    monkeypatch: pytest.MonkeyPatch, sar_root: Path
+):
+    from rrdmcp import server
+
+    monkeypatch.setenv("SAR_BASE_PATH", str(sar_root))
+    entries = server._load_entries()
+    sources = {e.source for e in entries}
+    assert sources == {"munin", "sar"}
+    assert any(e.group == SAR_GROUP and e.host == SAR_HOST for e in entries)
+
+
+def test_load_entries_skips_sar_when_env_var_unset():
+    from rrdmcp import server
+
+    entries = server._load_entries()
+    assert all(e.source == "munin" for e in entries)
+
+
+def test_fetch_series_tool_dispatches_to_sar_backend(
+    monkeypatch: pytest.MonkeyPatch, sar_root: Path
+):
+    from rrdmcp import server
+
+    monkeypatch.setenv("SAR_BASE_PATH", str(sar_root))
+    entries = server._load_entries()
+    cpu_field = next(
+        e
+        for e in entries
+        if e.source == "sar"
+        and e.group == SAR_GROUP
+        and e.host == SAR_HOST
+        and e.plugin.startswith("cpu-load.")
+        and e.field == "usr"
+    )
+
+    result = server.fetch_series(
+        SAR_GROUP,
+        SAR_HOST,
+        cpu_field.plugin,
+        "usr",
+        str(int(time.time()) - 60),
+        str(int(time.time()) + 60),
+    )
+    assert "points" in result
+    assert result["ds_names"] == ["usr"]
+
+
+def test_get_metadata_tool_for_single_field_exposes_sar_source(
+    monkeypatch: pytest.MonkeyPatch, sar_root: Path
+):
+    from rrdmcp import server
+
+    monkeypatch.setenv("SAR_BASE_PATH", str(sar_root))
+    entries = server._load_entries()
+    cpu_field = next(
+        e
+        for e in entries
+        if e.source == "sar"
+        and e.group == SAR_GROUP
+        and e.host == SAR_HOST
+        and e.plugin.startswith("cpu-load.")
+        and e.field == "usr"
+    )
+
+    result = server.get_metadata(SAR_GROUP, SAR_HOST, cpu_field.plugin, "usr")
+    assert result["source"] == "sar"
+
+
+def test_render_graph_tool_dispatches_to_sar_backend(
+    monkeypatch: pytest.MonkeyPatch, sar_root: Path
+):
+    from mcp.server.mcpserver import Image
+
+    from rrdmcp import server
+
+    monkeypatch.setenv("SAR_BASE_PATH", str(sar_root))
+    entries = server._load_entries()
+    cpu_field = next(
+        e
+        for e in entries
+        if e.source == "sar"
+        and e.group == SAR_GROUP
+        and e.host == SAR_HOST
+        and e.plugin.startswith("cpu-load.")
+        and e.field == "usr"
+    )
+
+    result = server.render_graph(
+        SAR_GROUP,
+        SAR_HOST,
+        cpu_field.plugin,
+        ["usr", "sys"],
+        str(int(time.time()) - 60),
+        str(int(time.time()) + 60),
+    )
+    assert isinstance(result, Image)
+    assert result.data[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_main_defaults_to_stdio_transport(monkeypatch: pytest.MonkeyPatch):
