@@ -188,7 +188,9 @@ def fetch_series(
         if resolved.source == "munin":
             result = rrd.fetch(resolved.path, start, end)
         else:
-            result = sar.fetch(resolved.path, resolved.plugin, resolved.field, start, end)
+            result = sar.fetch(
+                resolved.path, resolved.plugin, resolved.field, start, end
+            )
         if summary:
             return {
                 "step": result.step,

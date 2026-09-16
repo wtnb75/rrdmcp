@@ -112,9 +112,9 @@ def _extract_points(
         time_str = ts.get("time")
         if date_str is None or time_str is None:
             continue
-        dt = datetime.strptime(
-            f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S"
-        ).replace(tzinfo=UTC)
+        dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S").replace(
+            tzinfo=UTC
+        )
         metrics = walk_statistics(stat)
         value = metrics.get(plugin, {}).get(field)
         points.append((int(dt.timestamp()), value))

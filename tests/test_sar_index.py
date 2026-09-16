@@ -155,9 +155,7 @@ def test_build_index_skips_host_when_sadf_json_top_level_is_not_a_dict(
 ):
     _make_sa_host_dir(tmp_path)
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/sadf")
-    monkeypatch.setattr(
-        "rrdmcp.sar_index._run_sadf_json", lambda sadf_exe, sa_file: []
-    )
+    monkeypatch.setattr("rrdmcp.sar_index._run_sadf_json", lambda sadf_exe, sa_file: [])
     assert build_index(tmp_path) == []
 
 
