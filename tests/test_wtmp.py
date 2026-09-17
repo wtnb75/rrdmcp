@@ -1,4 +1,6 @@
-from rrdmcp.wtmp import _parse_line, _parse_utmpdump_output
+from pathlib import Path
+
+from rrdmcp.wtmp import _list_kind_files, _parse_line, _parse_utmpdump_output
 
 # Real `utmpdump` output (util-linux 2.38, Debian 12 bookworm), captured by
 # writing a synthetic `struct utmp` via a small C program compiled inside a
@@ -70,3 +72,29 @@ def test_parse_line_returns_none_for_unparseable_timestamp():
         "[host                ] [0.0.0.0        ] [not-a-timestamp]"
     )
     assert _parse_line(line) is None
+
+
+def test_list_kind_files_finds_plain_file_only(tmp_path: Path):
+    (tmp_path / "wtmp").write_bytes(b"")
+    assert _list_kind_files(tmp_path, "wtmp") == [tmp_path / "wtmp"]
+
+
+def test_list_kind_files_finds_rotated_and_gz_generations(tmp_path: Path):
+    (tmp_path / "wtmp").write_bytes(b"")
+    (tmp_path / "wtmp.1").write_bytes(b"")
+    (tmp_path / "wtmp.2.gz").write_bytes(b"")
+    result = _list_kind_files(tmp_path, "wtmp")
+    assert set(result) == {
+        tmp_path / "wtmp",
+        tmp_path / "wtmp.1",
+        tmp_path / "wtmp.2.gz",
+    }
+
+
+def test_list_kind_files_ignores_other_kind(tmp_path: Path):
+    (tmp_path / "btmp").write_bytes(b"")
+    assert _list_kind_files(tmp_path, "wtmp") == []
+
+
+def test_list_kind_files_returns_empty_for_missing_directory(tmp_path: Path):
+    assert _list_kind_files(tmp_path / "does-not-exist", "wtmp") == []

@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from pathlib import Path
 
 UTMP_TYPE_NAMES: dict[int, str] = {
     0: "EMPTY",
@@ -57,3 +58,18 @@ def _parse_utmpdump_output(text: str) -> list[dict]:
         del record["type_num"]
         records.append(record)
     return records
+
+
+def _list_kind_files(host_dir: Path, kind: str) -> list[Path]:
+    """Enumerate the base file and any rotated/compressed generations for `kind`.
+
+    Matches `{kind}`, `{kind}.1`, `{kind}.2.gz`, etc. Rotation generation
+    counts aren't fixed (depends on the deployment's logrotate config), so
+    this globs rather than assuming a bound.
+    """
+    files = []
+    plain = host_dir / kind
+    if plain.is_file():
+        files.append(plain)
+    files.extend(sorted(host_dir.glob(f"{kind}.[0-9]*")))
+    return files
