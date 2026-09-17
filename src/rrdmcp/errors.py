@@ -40,3 +40,15 @@ class SarToolTimeoutError(RrdMcpError):
 
 class SarInvalidTimeError(RrdMcpError):
     """A start/end time could not be interpreted as a unix timestamp or ISO 8601 string."""
+
+
+class WtmpToolNotFoundError(RrdMcpError):
+    """The `utmpdump` executable is not on PATH."""
+
+
+class WtmpSourceNotFoundError(RrdMcpError):
+    """No (group, host, kind) matches the given identifiers among discovered wtmp/btmp sources."""
+
+
+class WtmpInvalidTimeError(RrdMcpError):
+    """A start/end time could not be interpreted as a unix timestamp or ISO 8601 string."""

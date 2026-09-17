@@ -15,3 +15,17 @@ def try_parse_iso8601(value: str) -> int | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return int(dt.timestamp())
+
+
+def normalize_time_to_epoch(value: str) -> int:
+    """Convert a unix timestamp string or an ISO 8601 string to a Unix epoch second.
+
+    Raises ValueError if `value` is neither (e.g. rrdtool AT-STYLE
+    expressions like "-1h"/"now", which only rrd.py's rrdtool-backed path
+    understands). Callers that need a domain-specific error message should
+    catch ValueError and re-raise their own exception.
+    """
+    epoch = try_parse_iso8601(value)
+    if epoch is not None:
+        return epoch
+    return int(value)
