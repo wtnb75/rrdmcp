@@ -314,3 +314,18 @@ def test_fetch_applies_limit_keeping_most_recent_events(
 def test_fetch_raises_invalid_time_for_relative_expression(tmp_path: Path):
     with pytest.raises(WtmpInvalidTimeError):
         fetch(tmp_path, "wtmp", "-1h", "now")
+
+
+WTMP_GROUP = "wtmpgroup"
+WTMP_HOST = "wtmphost.example.com"
+
+
+def test_fetch_returns_events_from_real_utmpdump_round_trip(wtmp_root: Path):
+    host_dir = wtmp_root / WTMP_GROUP / WTMP_HOST
+    result = fetch(host_dir, "wtmp", "1700000000", "1700003600")
+    assert result.total_events == 3
+    assert [e["type"] for e in result.events] == [
+        "BOOT_TIME",
+        "USER_PROCESS",
+        "DEAD_PROCESS",
+    ]

@@ -102,3 +102,39 @@ def sar_root(tmp_path: Path) -> Path:
         capture_output=True,
     )
     return tmp_path
+
+
+UTMPDUMP_AVAILABLE = shutil.which("utmpdump") is not None
+
+WTMP_GROUP = "wtmpgroup"
+WTMP_HOST = "wtmphost.example.com"
+
+# Same three records as tests/test_wtmp.py's SAMPLE_UTMPDUMP_OUTPUT, kept as
+# the exact bracketed text `utmpdump` prints, so `utmpdump -r` (reverse:
+# text -> binary) can round-trip it into a real wtmp file without needing
+# to hand-craft the `struct utmp` binary layout in Python.
+_SAMPLE_UTMPDUMP_TEXT = (
+    "[2] [00000] [~~  ] [reboot  ] [~           ] "
+    "[5.10.0-linux        ] [0.0.0.0        ] [2023-11-14T22:13:20,000000+00:00]\n"
+    "[7] [01234] [ts/0] [alice   ] [pts/0       ] "
+    "[10.0.0.5            ] [10.0.0.5       ] [2023-11-14T22:15:00,000000+00:00]\n"
+    "[8] [01234] [ts/0] [        ] [pts/0       ] "
+    "[                    ] [0.0.0.0        ] [2023-11-14T23:13:20,000000+00:00]\n"
+)
+
+
+@pytest.fixture
+def wtmp_root(tmp_path: Path) -> Path:
+    if not UTMPDUMP_AVAILABLE:
+        pytest.skip("utmpdump command not available")
+
+    host_dir = tmp_path / WTMP_GROUP / WTMP_HOST
+    host_dir.mkdir(parents=True)
+    proc = subprocess.run(
+        ["utmpdump", "-r"],
+        input=_SAMPLE_UTMPDUMP_TEXT.encode(),
+        capture_output=True,
+        check=True,
+    )
+    (host_dir / "wtmp").write_bytes(proc.stdout)
+    return tmp_path
