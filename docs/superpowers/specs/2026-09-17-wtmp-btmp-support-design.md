@@ -106,12 +106,11 @@ Munin/sar/wtmpは同一サーバーインスタンスで同時に有効化でき
 
 ## エラーハンドリング(`errors.py`)
 
-- `WtmpToolNotFoundError`: `utmpdump`がPATH上にない
-- `WtmpToolTimeoutError`: `utmpdump`のsubprocess呼び出しがタイムアウト
+- `WtmpToolNotFoundError`: `utmpdump`がPATH上にない(fetch開始時に1回だけチェックし、無ければ即座にこの例外を送出する。個別ファイルの処理ではなく機能全体が使えないことを表すため、スキップ対象にはしない)
 - `WtmpSourceNotFoundError`: 指定した`group`/`host`/`kind`が`list_login_sources`の結果に存在しない
 - `WtmpInvalidTimeError`: `start`/`end`がunixタイムスタンプ/ISO 8601として解釈できない
 
-いずれも既存の`RrdMcpError`を継承し、`server.py`側の各ツールで捕捉して`{"error": str(exc)}`を返す既存パターンに従う。個別ローテートファイルの読み取り失敗は例外にせずスキップする(上記`wtmp.py`のfetch参照)。
+いずれも既存の`RrdMcpError`を継承し、`server.py`側の各ツールで捕捉して`{"error": str(exc)}`を返す既存パターンに従う。個別ローテートファイルの`utmpdump`実行失敗(非0終了・タイムアウト・パース不能な出力)は専用の例外を設けず、単に当該ファイルをスキップする(例外を送出しない。上記`wtmp.py`のfetch参照)。
 
 ## テスト方針
 
