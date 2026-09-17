@@ -11,7 +11,9 @@ def test_build_index_finds_plain_wtmp_file(tmp_path: Path):
     host_dir = tmp_path / "web" / "app01"
     host_dir.mkdir(parents=True)
     (host_dir / "wtmp").write_bytes(b"")
-    assert build_index(tmp_path) == [LoginSource(group="web", host="app01", kind="wtmp")]
+    assert build_index(tmp_path) == [
+        LoginSource(group="web", host="app01", kind="wtmp")
+    ]
 
 
 def test_build_index_finds_rotated_and_compressed_files(tmp_path: Path):
@@ -19,7 +21,9 @@ def test_build_index_finds_rotated_and_compressed_files(tmp_path: Path):
     host_dir.mkdir(parents=True)
     (host_dir / "btmp.1").write_bytes(b"")
     (host_dir / "btmp.2.gz").write_bytes(b"")
-    assert build_index(tmp_path) == [LoginSource(group="web", host="app01", kind="btmp")]
+    assert build_index(tmp_path) == [
+        LoginSource(group="web", host="app01", kind="btmp")
+    ]
 
 
 def test_build_index_finds_both_kinds_for_same_host(tmp_path: Path):

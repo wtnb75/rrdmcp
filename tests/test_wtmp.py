@@ -133,7 +133,9 @@ def test_run_utmpdump_passes_plain_file_path_directly(
 
     def fake_run(args, **kwargs):
         calls.append(args)
-        return subprocess.CompletedProcess(args, 0, stdout=SAMPLE_UTMPDUMP_OUTPUT, stderr="")
+        return subprocess.CompletedProcess(
+            args, 0, stdout=SAMPLE_UTMPDUMP_OUTPUT, stderr=""
+        )
 
     monkeypatch.setattr(wtmp.subprocess, "run", fake_run)
     records = _run_utmpdump("/usr/bin/utmpdump", path)
@@ -244,10 +246,24 @@ def test_fetch_merges_and_sorts_events_across_rotated_files(
     def fake_run_utmpdump(exe, path):
         if path.name == "wtmp":
             return [
-                {"timestamp": 300, "type": "USER_PROCESS", "user": "b", "line": "", "host": "", "pid": 2}
+                {
+                    "timestamp": 300,
+                    "type": "USER_PROCESS",
+                    "user": "b",
+                    "line": "",
+                    "host": "",
+                    "pid": 2,
+                }
             ]
         return [
-            {"timestamp": 100, "type": "USER_PROCESS", "user": "a", "line": "", "host": "", "pid": 1}
+            {
+                "timestamp": 100,
+                "type": "USER_PROCESS",
+                "user": "a",
+                "line": "",
+                "host": "",
+                "pid": 1,
+            }
         ]
 
     monkeypatch.setattr(wtmp, "_run_utmpdump", fake_run_utmpdump)
@@ -265,8 +281,22 @@ def test_fetch_filters_events_outside_start_end_range(
         wtmp,
         "_run_utmpdump",
         lambda exe, path: [
-            {"timestamp": 50, "type": "USER_PROCESS", "user": "a", "line": "", "host": "", "pid": 1},
-            {"timestamp": 150, "type": "USER_PROCESS", "user": "b", "line": "", "host": "", "pid": 2},
+            {
+                "timestamp": 50,
+                "type": "USER_PROCESS",
+                "user": "a",
+                "line": "",
+                "host": "",
+                "pid": 1,
+            },
+            {
+                "timestamp": 150,
+                "type": "USER_PROCESS",
+                "user": "b",
+                "line": "",
+                "host": "",
+                "pid": 2,
+            },
         ],
     )
     result = fetch(tmp_path, "wtmp", "100", "200")
@@ -285,7 +315,14 @@ def test_fetch_skips_file_when_run_utmpdump_returns_none(
         if path.name == "wtmp.1":
             return None
         return [
-            {"timestamp": 100, "type": "USER_PROCESS", "user": "a", "line": "", "host": "", "pid": 1}
+            {
+                "timestamp": 100,
+                "type": "USER_PROCESS",
+                "user": "a",
+                "line": "",
+                "host": "",
+                "pid": 1,
+            }
         ]
 
     monkeypatch.setattr(wtmp, "_run_utmpdump", fake_run_utmpdump)
@@ -302,7 +339,14 @@ def test_fetch_applies_limit_keeping_most_recent_events(
         wtmp,
         "_run_utmpdump",
         lambda exe, path: [
-            {"timestamp": ts, "type": "USER_PROCESS", "user": "u", "line": "", "host": "", "pid": 1}
+            {
+                "timestamp": ts,
+                "type": "USER_PROCESS",
+                "user": "u",
+                "line": "",
+                "host": "",
+                "pid": 1,
+            }
             for ts in (100, 200, 300)
         ],
     )
