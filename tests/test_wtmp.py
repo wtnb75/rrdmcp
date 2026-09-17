@@ -192,3 +192,23 @@ def test_run_utmpdump_returns_none_on_corrupt_gz(tmp_path: Path):
     path = tmp_path / "wtmp.1.gz"
     path.write_bytes(b"not-actually-gzip-data")
     assert _run_utmpdump("/usr/bin/utmpdump", path) is None
+
+
+def test_run_utmpdump_returns_none_on_truncated_gz(tmp_path: Path):
+    path = tmp_path / "wtmp.1.gz"
+    # Create a valid gzip file then truncate it mid-stream to trigger EOFError
+    original = b"raw-wtmp-bytes" * 100
+    compressed = gzip.compress(original)
+    path.write_bytes(compressed[:15])  # truncate to first 15 bytes
+    assert _run_utmpdump("/usr/bin/utmpdump", path) is None
+
+
+def test_run_utmpdump_returns_none_on_corrupted_gz_stream(tmp_path: Path):
+    path = tmp_path / "wtmp.1.gz"
+    # Create a valid gzip file then corrupt a byte mid-stream to trigger zlib.error
+    original = b"raw-wtmp-bytes" * 100
+    compressed = bytearray(gzip.compress(original))
+    # Flip a bit in the middle of the compressed data (not in the header)
+    compressed[30] ^= 0xFF
+    path.write_bytes(bytes(compressed))
+    assert _run_utmpdump("/usr/bin/utmpdump", path) is None
