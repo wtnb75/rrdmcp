@@ -120,7 +120,13 @@ def _run_utmpdump(exe: str, path: Path) -> list[dict] | None:
                 check=True,
             )
             stdout = proc.stdout
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, EOFError, zlib.error):
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        OSError,
+        EOFError,
+        zlib.error,
+    ):
         return None
     return _parse_utmpdump_output(stdout)
 
