@@ -45,6 +45,7 @@ running Munin, since it's a dependency of `munin-node`/`munin`).
 | `RRDMCP_HOST` | `127.0.0.1` | Bind host for `streamable-http` |
 | `RRDMCP_PORT` | `8000` | Bind port for `streamable-http` |
 | `SAR_BASE_PATH` | (unset — sar support disabled) | Root directory of sar logs, laid out as `<group>/<host>/saXX` (requires the `sadf` command on `PATH`, from the `sysstat` package) |
+| `WTMP_BASE_PATH` | (unset — wtmp/btmp support disabled) | Root directory of wtmp/btmp logs, laid out as `<group>/<host>/{wtmp,btmp}` (rotated generations like `wtmp.1`/`wtmp.2.gz` are also read; requires the `utmpdump` command on `PATH`, from the `util-linux` package) |
 
 ## Running
 
@@ -121,6 +122,8 @@ If you mount `MUNIN_RRD_BASE_PATH` at a different path, add
   - `summary=true` aggregates the whole range into a single `summary` (avg/min/max/count); cannot be combined with `resolution`
   - `top_n` (requires `resolution`) returns only the top N buckets sorted by `top_by` ("avg"/"min"/"max", default "avg") in `order` ("desc"/"asc", default "desc"); `total_buckets` reports the count before filtering, so you can ask things like "the 10 days with the highest average" or "the 5 days with the lowest minimum" directly
 - `render_graph(group, host, plugin, fields, start, end, width?, height?)` — render a PNG graph overlaying the given fields
+- `list_login_sources()` — list every discovered `(group, host, kind)` triple from wtmp/btmp logs (`kind` is `"wtmp"` or `"btmp"`)
+- `list_login_events(group, host, kind, start, end, limit?)` — fetch raw login-event records for one host (no session pairing or duration computed), sorted ascending by timestamp. `start`/`end` accept a unix timestamp or an ISO 8601 timestamp only. If `limit` is given, only the most recent `limit` events are returned; `total_events` reports the count before truncation
 
 ## Known limitations
 
@@ -128,3 +131,4 @@ If you mount `MUNIN_RRD_BASE_PATH` at a different path, add
 - Graph rendering is a simplified version — it doesn't reproduce Munin's own threshold bands, stacking, CDEFs, etc.
 - sar support requires log files pre-aggregated under `SAR_BASE_PATH/<group>/<host>/saXX` (e.g. via `rsync` from each host's `/var/log/sa`); it does not read `/var/log/sa` directly or collect data itself
 - sar plugin/field discovery only recognizes activities matching a fixed set of `sadf -j` JSON shapes (scalar dicts, or arrays keyed by one of `cpu`/`disk-device`/`iface`/`filesystem`/`number`); activities matching a recognized shape but missing from `sar_index.SAR_ACTIVITY_META`/`SAR_FIELD_META` show up without a human-friendly title/label, while activities with an unrecognized shape are not discovered at all
+- wtmp/btmp support requires log files pre-aggregated under `WTMP_BASE_PATH/<group>/<host>/{wtmp,btmp}` (e.g. via `rsync`) and the `utmpdump` command on `PATH`; it returns raw per-record events only — no login/logout session pairing, duration computation, or `wtmpdb` (SQLite-based) support

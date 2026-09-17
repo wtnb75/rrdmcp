@@ -19,7 +19,7 @@ from .errors import (
 )
 from .rrd import GRAPH_COLORS
 from .sar_index import walk_statistics
-from .timeutil import try_parse_iso8601
+from .timeutil import normalize_time_to_epoch
 
 SADF_TIMEOUT_SECONDS = 30
 
@@ -32,11 +32,8 @@ class FetchResult:
 
 
 def _normalize_time_to_epoch(value: str) -> int:
-    epoch = try_parse_iso8601(value)
-    if epoch is not None:
-        return epoch
     try:
-        return int(value)
+        return normalize_time_to_epoch(value)
     except ValueError as exc:
         raise SarInvalidTimeError(
             "sar data source requires a unix timestamp or an ISO 8601 "
