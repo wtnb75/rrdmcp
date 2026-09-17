@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:python3.14-trixie-slim AS builder
+FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim AS builder
 
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
@@ -14,7 +14,7 @@ COPY README.md ./
 RUN uv sync --frozen --no-dev --no-editable
 
 
-FROM ghcr.io/astral-sh/uv:python3.14-trixie-slim
+FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 
 # rrdtool, sysstat (for sadf), and util-linux (for utmpdump) are runtime
 # dependencies invoked as subprocesses (see src/rrdmcp/rrd.py,
