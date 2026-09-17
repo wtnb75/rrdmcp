@@ -9,17 +9,21 @@ import pytest
 # insertion; local constants are the stable, repo-wide convention instead.
 SAR_GROUP = "sargroup"
 SAR_HOST = "sarhost.example.com"
+WTMP_GROUP = "wtmpgroup"
+WTMP_HOST = "wtmphost.example.com"
 
 
 @pytest.fixture(autouse=True)
 def _configure_env(monkeypatch: pytest.MonkeyPatch, munin_root: Path):
     monkeypatch.setenv("MUNIN_RRD_BASE_PATH", str(munin_root))
     monkeypatch.setenv("MUNIN_DATAFILE_PATH", str(munin_root / "datafile"))
-    # Hermetic by default: tests that need sar set SAR_BASE_PATH themselves
-    # via monkeypatch.setenv, but the whole file's isolation from an
-    # ambient SAR_BASE_PATH in the dev/CI shell depends on this, not just
-    # the one test that asserts sar is skipped when unset.
+    # Hermetic by default: tests that need sar/wtmp set SAR_BASE_PATH/
+    # WTMP_BASE_PATH themselves via monkeypatch.setenv, but the whole
+    # file's isolation from an ambient value in the dev/CI shell depends on
+    # this, not just the one test that asserts each source is skipped when
+    # unset.
     monkeypatch.delenv("SAR_BASE_PATH", raising=False)
+    monkeypatch.delenv("WTMP_BASE_PATH", raising=False)
 
 
 def test_list_hosts_tool():
@@ -557,3 +561,81 @@ def test_main_streamable_http_host_and_port_from_cli_args(
     )
 
     assert calls == [{"transport": "streamable-http", "host": "0.0.0.0", "port": 9000}]
+
+
+def test_list_login_sources_returns_empty_list_when_env_var_unset():
+    from rrdmcp import server
+
+    assert server.list_login_sources() == []
+
+
+def test_list_login_sources_lists_discovered_kinds(
+    monkeypatch: pytest.MonkeyPatch, wtmp_root: Path
+):
+    from rrdmcp import server
+
+    monkeypatch.setenv("WTMP_BASE_PATH", str(wtmp_root))
+    result = server.list_login_sources()
+    assert {"group": WTMP_GROUP, "host": WTMP_HOST, "kind": "wtmp"} in result
+
+
+def test_list_login_events_returns_error_when_env_var_unset():
+    from rrdmcp import server
+
+    result = server.list_login_events("g", "h", "wtmp", "0", "9999999999")
+    assert "error" in result
+
+
+def test_list_login_events_returns_error_for_unknown_source(
+    monkeypatch: pytest.MonkeyPatch, wtmp_root: Path
+):
+    from rrdmcp import server
+
+    monkeypatch.setenv("WTMP_BASE_PATH", str(wtmp_root))
+    result = server.list_login_events(
+        WTMP_GROUP, "no-such-host", "wtmp", "0", "9999999999"
+    )
+    assert "error" in result
+
+
+def test_list_login_events_returns_real_events(
+    monkeypatch: pytest.MonkeyPatch, wtmp_root: Path
+):
+    from rrdmcp import server
+
+    monkeypatch.setenv("WTMP_BASE_PATH", str(wtmp_root))
+    result = server.list_login_events(
+        WTMP_GROUP, WTMP_HOST, "wtmp", "1700000000", "1700003600"
+    )
+    assert result["total_events"] == 3
+    assert [e["type"] for e in result["events"]] == [
+        "BOOT_TIME",
+        "USER_PROCESS",
+        "DEAD_PROCESS",
+    ]
+
+
+def test_list_login_events_rejects_non_positive_limit(
+    monkeypatch: pytest.MonkeyPatch, wtmp_root: Path
+):
+    from rrdmcp import server
+
+    monkeypatch.setenv("WTMP_BASE_PATH", str(wtmp_root))
+    result = server.list_login_events(
+        WTMP_GROUP, WTMP_HOST, "wtmp", "1700000000", "1700003600", limit=0
+    )
+    assert "error" in result
+
+
+def test_list_login_events_applies_limit(
+    monkeypatch: pytest.MonkeyPatch, wtmp_root: Path
+):
+    from rrdmcp import server
+
+    monkeypatch.setenv("WTMP_BASE_PATH", str(wtmp_root))
+    result = server.list_login_events(
+        WTMP_GROUP, WTMP_HOST, "wtmp", "1700000000", "1700003600", limit=1
+    )
+    assert result["total_events"] == 3
+    assert len(result["events"]) == 1
+    assert result["events"][0]["type"] == "DEAD_PROCESS"

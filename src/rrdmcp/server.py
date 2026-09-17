@@ -4,8 +4,8 @@ from pathlib import Path
 
 from mcp.server.mcpserver import Image, MCPServer
 
-from . import discovery, rrd, sar, sar_index
-from .errors import RrdMcpError
+from . import discovery, rrd, sar, sar_index, wtmp, wtmp_index
+from .errors import RrdMcpError, WtmpSourceNotFoundError
 from .munin_datafile import load_datafile
 
 mcp = MCPServer("rrdmcp")
@@ -22,6 +22,11 @@ def _datafile_path() -> Path:
 
 def _sar_base_path() -> Path | None:
     raw = os.environ.get("SAR_BASE_PATH")
+    return Path(raw) if raw else None
+
+
+def _wtmp_base_path() -> Path | None:
+    raw = os.environ.get("WTMP_BASE_PATH")
     return Path(raw) if raw else None
 
 
@@ -272,6 +277,55 @@ def render_graph(
                 points_and_labels, start, end, title, vlabel, width, height
             )
         return Image(data=png_bytes, format="png")
+    except RrdMcpError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def list_login_sources() -> list[dict]:
+    """List all (group, host, kind) triples discovered from wtmp/btmp logs.
+
+    `kind` is "wtmp" (login/logout/reboot history) or "btmp" (failed login
+    attempts). Returns an empty list if `WTMP_BASE_PATH` is not set.
+    """
+    base = _wtmp_base_path()
+    if base is None:
+        return []
+    return [
+        {"group": s.group, "host": s.host, "kind": s.kind}
+        for s in wtmp_index.build_index(base)
+    ]
+
+
+@mcp.tool()
+def list_login_events(
+    group: str, host: str, kind: str, start: str, end: str, limit: int | None = None
+) -> dict:
+    """Fetch raw wtmp/btmp login-event records for one host.
+
+    `kind` is "wtmp" or "btmp", as returned by `list_login_sources`.
+    `start`/`end` accept a unix timestamp or an ISO 8601 timestamp only (no
+    rrdtool-style relative expressions). Events are raw per-record data (no
+    login/logout session pairing or duration is computed), sorted ascending
+    by timestamp. If `limit` is given, only the most recent `limit` events
+    are returned; `total_events` always reports the count before
+    truncation.
+    """
+    try:
+        if limit is not None and limit <= 0:
+            return {"error": "limit must be a positive integer"}
+        base = _wtmp_base_path()
+        if base is None:
+            return {"error": "WTMP_BASE_PATH is not set; wtmp/btmp support is disabled"}
+        sources = wtmp_index.build_index(base)
+        if not any(
+            s.group == group and s.host == host and s.kind == kind for s in sources
+        ):
+            raise WtmpSourceNotFoundError(
+                f"login source not found: group={group!r} host={host!r} kind={kind!r}"
+            )
+        result = wtmp.fetch(base / group / host, kind, start, end, limit)
+        return {"total_events": result.total_events, "events": result.events}
     except RrdMcpError as exc:
         return {"error": str(exc)}
 
