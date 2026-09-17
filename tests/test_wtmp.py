@@ -5,12 +5,13 @@ from pathlib import Path
 import pytest
 
 from rrdmcp import wtmp
-from rrdmcp.errors import WtmpToolNotFoundError
+from rrdmcp.errors import WtmpInvalidTimeError, WtmpToolNotFoundError
 from rrdmcp.wtmp import (
     _list_kind_files,
     _parse_line,
     _parse_utmpdump_output,
     _run_utmpdump,
+    fetch,
     require_utmpdump,
 )
 
@@ -212,3 +213,104 @@ def test_run_utmpdump_returns_none_on_corrupted_gz_stream(tmp_path: Path):
     compressed[30] ^= 0xFF
     path.write_bytes(bytes(compressed))
     assert _run_utmpdump("/usr/bin/utmpdump", path) is None
+
+
+def test_fetch_returns_empty_when_no_files_exist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(wtmp, "require_utmpdump", lambda: "/usr/bin/utmpdump")
+    result = fetch(tmp_path, "wtmp", "0", "9999999999")
+    assert result == wtmp.FetchResult(total_events=0, events=[])
+
+
+def test_fetch_raises_when_utmpdump_not_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    def fail():
+        raise WtmpToolNotFoundError("utmpdump command not found in PATH")
+
+    monkeypatch.setattr(wtmp, "require_utmpdump", fail)
+    with pytest.raises(WtmpToolNotFoundError):
+        fetch(tmp_path, "wtmp", "0", "9999999999")
+
+
+def test_fetch_merges_and_sorts_events_across_rotated_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    (tmp_path / "wtmp").write_bytes(b"")
+    (tmp_path / "wtmp.1").write_bytes(b"")
+    monkeypatch.setattr(wtmp, "require_utmpdump", lambda: "/usr/bin/utmpdump")
+
+    def fake_run_utmpdump(exe, path):
+        if path.name == "wtmp":
+            return [
+                {"timestamp": 300, "type": "USER_PROCESS", "user": "b", "line": "", "host": "", "pid": 2}
+            ]
+        return [
+            {"timestamp": 100, "type": "USER_PROCESS", "user": "a", "line": "", "host": "", "pid": 1}
+        ]
+
+    monkeypatch.setattr(wtmp, "_run_utmpdump", fake_run_utmpdump)
+    result = fetch(tmp_path, "wtmp", "0", "9999999999")
+    assert [e["timestamp"] for e in result.events] == [100, 300]
+    assert result.total_events == 2
+
+
+def test_fetch_filters_events_outside_start_end_range(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    (tmp_path / "wtmp").write_bytes(b"")
+    monkeypatch.setattr(wtmp, "require_utmpdump", lambda: "/usr/bin/utmpdump")
+    monkeypatch.setattr(
+        wtmp,
+        "_run_utmpdump",
+        lambda exe, path: [
+            {"timestamp": 50, "type": "USER_PROCESS", "user": "a", "line": "", "host": "", "pid": 1},
+            {"timestamp": 150, "type": "USER_PROCESS", "user": "b", "line": "", "host": "", "pid": 2},
+        ],
+    )
+    result = fetch(tmp_path, "wtmp", "100", "200")
+    assert [e["timestamp"] for e in result.events] == [150]
+    assert result.total_events == 1
+
+
+def test_fetch_skips_file_when_run_utmpdump_returns_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    (tmp_path / "wtmp").write_bytes(b"")
+    (tmp_path / "wtmp.1").write_bytes(b"")
+    monkeypatch.setattr(wtmp, "require_utmpdump", lambda: "/usr/bin/utmpdump")
+
+    def fake_run_utmpdump(exe, path):
+        if path.name == "wtmp.1":
+            return None
+        return [
+            {"timestamp": 100, "type": "USER_PROCESS", "user": "a", "line": "", "host": "", "pid": 1}
+        ]
+
+    monkeypatch.setattr(wtmp, "_run_utmpdump", fake_run_utmpdump)
+    result = fetch(tmp_path, "wtmp", "0", "9999999999")
+    assert result.total_events == 1
+
+
+def test_fetch_applies_limit_keeping_most_recent_events(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    (tmp_path / "wtmp").write_bytes(b"")
+    monkeypatch.setattr(wtmp, "require_utmpdump", lambda: "/usr/bin/utmpdump")
+    monkeypatch.setattr(
+        wtmp,
+        "_run_utmpdump",
+        lambda exe, path: [
+            {"timestamp": ts, "type": "USER_PROCESS", "user": "u", "line": "", "host": "", "pid": 1}
+            for ts in (100, 200, 300)
+        ],
+    )
+    result = fetch(tmp_path, "wtmp", "0", "9999999999", limit=2)
+    assert [e["timestamp"] for e in result.events] == [200, 300]
+    assert result.total_events == 3
+
+
+def test_fetch_raises_invalid_time_for_relative_expression(tmp_path: Path):
+    with pytest.raises(WtmpInvalidTimeError):
+        fetch(tmp_path, "wtmp", "-1h", "now")

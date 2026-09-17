@@ -3,10 +3,12 @@ import re
 import shutil
 import subprocess
 import zlib
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from .errors import WtmpToolNotFoundError
+from .errors import WtmpInvalidTimeError, WtmpToolNotFoundError
+from .timeutil import normalize_time_to_epoch
 
 UTMP_TYPE_NAMES: dict[int, str] = {
     0: "EMPTY",
@@ -121,3 +123,51 @@ def _run_utmpdump(exe: str, path: Path) -> list[dict] | None:
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, EOFError, zlib.error):
         return None
     return _parse_utmpdump_output(stdout)
+
+
+@dataclass
+class FetchResult:
+    total_events: int
+    events: list[dict]
+
+
+def _normalize_time_to_epoch(value: str) -> int:
+    try:
+        return normalize_time_to_epoch(value)
+    except ValueError as exc:
+        raise WtmpInvalidTimeError(
+            "wtmp/btmp data source requires a unix timestamp or an ISO 8601 "
+            f"string, got: {value!r}"
+        ) from exc
+
+
+def fetch(
+    host_dir: Path, kind: str, start: str, end: str, limit: int | None = None
+) -> FetchResult:
+    """Fetch raw wtmp/btmp event records for one host, across all rotated files.
+
+    `host_dir` is `WTMP_BASE_PATH/<group>/<host>/`. `kind` is "wtmp" or
+    "btmp". Missing/corrupt rotated files are skipped as gaps, never an
+    error; only a missing `utmpdump` executable is fatal.
+
+    Events are sorted ascending by timestamp. If `limit` is given, only the
+    most recent `limit` events (by timestamp) are returned, but
+    `FetchResult.total_events` always reports the count before truncation.
+    """
+    start_epoch = _normalize_time_to_epoch(start)
+    end_epoch = _normalize_time_to_epoch(end)
+    exe = require_utmpdump()
+
+    all_events: list[dict] = []
+    for path in _list_kind_files(host_dir, kind):
+        records = _run_utmpdump(exe, path)
+        if records is None:
+            continue
+        all_events.extend(records)
+
+    all_events = [e for e in all_events if start_epoch <= e["timestamp"] <= end_epoch]
+    all_events.sort(key=lambda e: e["timestamp"])
+    total_events = len(all_events)
+    if limit is not None:
+        all_events = all_events[-limit:]
+    return FetchResult(total_events=total_events, events=all_events)
