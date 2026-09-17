@@ -1,6 +1,11 @@
+import gzip
 import re
+import shutil
+import subprocess
 from datetime import datetime
 from pathlib import Path
+
+from .errors import WtmpToolNotFoundError
 
 UTMP_TYPE_NAMES: dict[int, str] = {
     0: "EMPTY",
@@ -73,3 +78,45 @@ def _list_kind_files(host_dir: Path, kind: str) -> list[Path]:
         files.append(plain)
     files.extend(sorted(host_dir.glob(f"{kind}.[0-9]*")))
     return files
+
+
+WTMPDUMP_TIMEOUT_SECONDS = 30
+
+
+def require_utmpdump() -> str:
+    exe = shutil.which("utmpdump")
+    if exe is None:
+        raise WtmpToolNotFoundError("utmpdump command not found in PATH")
+    return exe
+
+
+def _run_utmpdump(exe: str, path: Path) -> list[dict] | None:
+    """Run utmpdump on one wtmp/btmp file and parse its output.
+
+    Returns None (never raises) on any execution failure — a non-zero
+    exit, a timeout, or an OS-level error (including a corrupt .gz) — so
+    one bad rotated file doesn't abort a fetch spanning several files.
+    """
+    try:
+        if path.suffix == ".gz":
+            data = gzip.decompress(path.read_bytes())
+            proc = subprocess.run(
+                [exe],
+                input=data,
+                capture_output=True,
+                timeout=WTMPDUMP_TIMEOUT_SECONDS,
+                check=True,
+            )
+            stdout = proc.stdout.decode("utf-8", errors="replace")
+        else:
+            proc = subprocess.run(
+                [exe, str(path)],
+                capture_output=True,
+                text=True,
+                timeout=WTMPDUMP_TIMEOUT_SECONDS,
+                check=True,
+            )
+            stdout = proc.stdout
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        return None
+    return _parse_utmpdump_output(stdout)
